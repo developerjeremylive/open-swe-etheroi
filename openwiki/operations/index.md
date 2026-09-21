@@ -1,4 +1,4 @@
 # Files
 
-- [Configuration and Startup Validation](configuration.md) - Explains Open SWE's lazy environment registry, persisted administrator settings, model and sandbox selection, secrets, and the validation that can stop a server from starting.
-- [Development, Deployment, and Serving](deployment.md) - Run Open SWE locally or in production, including the LangGraph runtime, bundled or separate dashboard serving, webhook exposure, and desktop boundaries. Covers Docker, mount-prefix coupling, and focused operational checks.
+- [Configuration and settings surfaces](configuration.md) - Safe operational map of deployment environment variables, startup dependencies, persisted workspace and user settings, sandbox selection, models, integrations, and precedence. It identifies validation and failure behavior without exposing secret values.
+- [Development, deployment, and release topology](deployment.md) - Run Open SWE locally, package and deploy its LangGraph backend and dashboard, expose webhooks safely, and operate desktop and sandbox-release tooling. Explains serving boundaries, runtime configuration, and production security constraints.

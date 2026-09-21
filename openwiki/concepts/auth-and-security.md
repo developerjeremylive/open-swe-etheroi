@@ -1,154 +1,139 @@
 ---
 type: security architecture concept
-title: Authentication, Authorization, and Secret Boundaries
-description: How Open SWE authenticates dashboard and automation users, resolves GitHub authority, verifies inbound requests, encrypts stored credentials, and keeps secrets out of sandboxes.
+title: Authentication, authorization, and credential boundaries
+description: How Open SWE authenticates dashboard and webhook callers, determines personal versus workspace GitHub authority, limits repository and sandbox credentials, and protects persisted secrets.
 tags: [authentication, authorization, github-oauth, github-app, webhooks, encryption, csrf, sandbox-security]
-verified:
-  - by: openwiki/0.4.2
-    at: 2026-09-08T08:15:30.533Z
 sources:
   - id: openwiki-source-328bde9e94017848bb09ba23
     resource: repo://agent/api/app.py
-  - id: openwiki-source-4817379f332cdbc419964b44
-    resource: repo://agent/api/health.py
-  - id: openwiki-source-068d65a84c760eb8d555055e
-    resource: repo://agent/completion.py
-  - id: openwiki-source-ef92164b6963a5a6100712cb
-    resource: repo://agent/dashboard/admin.py
+  - id: openwiki-source-f5844ea923486ce19e75076a
+    resource: repo://agent/credential_scope.py
+  - id: openwiki-source-04f1d39360e23b075eaca9f3
+    resource: repo://agent/dashboard/auth_routes.py
   - id: openwiki-source-5460c3972fe61bb256d07994
     resource: repo://agent/dashboard/oauth.py
   - id: openwiki-source-d9f679c15adbf4b3f612d406
     resource: repo://agent/dashboard/profiles.py
-  - id: openwiki-source-61ace7d4952db9ddb8316aeb
-    resource: repo://agent/dashboard/routes.py
+  - id: openwiki-source-012c33180803e4ba079e8e01
+    resource: repo://agent/dashboard/repo_access.py
   - id: openwiki-source-eb53b48336d1b5fc0816441a
     resource: repo://agent/encryption.py
   - id: openwiki-source-b9f836649dd06f67bc38d11f
     resource: repo://agent/github/app.py
   - id: openwiki-source-6664f6fd05037c7c782f7b09
     resource: repo://agent/github/comments.py
-  - id: openwiki-source-827347e6fb585d77ccf9c4d7
-    resource: repo://agent/github/org_membership.py
   - id: openwiki-source-5ec5369df7ad45c41aa9c1a5
     resource: repo://agent/github/proxy.py
   - id: openwiki-source-3d1c7beecd605173281a3bf6
     resource: repo://agent/github/routes.py
+  - id: openwiki-source-5e9185d17de9e5c5749bec9d
+    resource: repo://agent/github/sandbox_access.py
   - id: openwiki-source-5309b9767fbe9ada6e6717e6
     resource: repo://agent/github/thread_token.py
-  - id: openwiki-source-78256de79d5b80876878caee
-    resource: repo://agent/github/token_auth.py
   - id: openwiki-source-44138fc28bbb6b76c90cb1cf
     resource: repo://agent/github/token.py
-  - id: openwiki-source-142fa72edf963dfd0b9f031b
-    resource: repo://agent/linear/routes.py
-  - id: openwiki-source-9d5775155057d8f8c3a08e3e
-    resource: repo://agent/middleware/refresh_github_proxy.py
   - id: openwiki-source-2dedcea02c5aa03c54d81c32
     resource: repo://agent/sandboxes/providers/langsmith.py
-  - id: openwiki-source-856ade03ef31ac38e1347f7c
-    resource: repo://agent/server.py
   - id: openwiki-source-41a696e92db10ba3dc9c66b0
     resource: repo://agent/slack/client.py
   - id: openwiki-source-962c8f95135eb5d6f64654e6
     resource: repo://agent/slack/oauth.py
   - id: openwiki-source-e0785b4f2497c26e024d92fc
     resource: repo://agent/slack/routes.py
-  - id: openwiki-source-9bef6ead94fcf55bf6db8787
-    resource: repo://agent/tools/admin_gate.py
-  - id: openwiki-source-25a50e8385de61204afe1bcf
-    resource: repo://agent/webhooks/common.py
-  - id: openwiki-source-570f630f7053812ac62c55ef
-    resource: repo://tests/auth/test_auth_sources.py
+  - id: openwiki-source-2125456467ee589819c93414
+    resource: repo://agent/threads/terminal.py
+  - id: openwiki-source-1990604a614d2c33c10c6458
+    resource: repo://agent/users/authorization.py
+  - id: openwiki-source-5d5d423c671c0bf3e2f6f500
+    resource: repo://tests/auth/test_github_token_ttl.py
+  - id: openwiki-source-d6f96668603c95f40c5a8ff0
+    resource: repo://tests/auth/test_thread_credential_scope.py
   - id: openwiki-source-3a1539e01daa921ba15e9617
     resource: repo://tests/dashboard/test_dashboard_oauth_redirect.py
-  - id: openwiki-source-7b9c4eb39f597fd0bd3652b4
-    resource: repo://tests/dashboard/test_dashboard_org_login_gate.py
   - id: openwiki-source-d8c75a797d0ce06ee3b8d9fb
     resource: repo://tests/dashboard/test_github_token_auth.py
-generated: { by: "openwiki/0.4.2", at: "2026-09-08T08:15:30.533Z" }
+generated: { by: "openwiki/0.4.2", at: "2026-09-21T08:17:01.511Z" }
+verified:
+  - by: openwiki/0.4.2
+    at: 2026-09-21T08:17:01.511Z
 ---
 
-# Authentication, Authorization, and Secret Boundaries
+# Authentication, authorization, and credential boundaries
 
-Open SWE crosses distinct trust boundaries: dashboard users authenticate with GitHub, external systems deliver webhooks, agent runs need GitHub authority, and sandboxed code must not receive long-lived secrets. This page describes the enforcement points and their failure modes. See also [sandbox lifecycle](../architecture/sandbox-lifecycle.md), [tools](./tools.md), [dashboard UI](../integrations/dashboard-ui.md), [configuration](../operations/configuration.md), and [invocation](../workflows/invocation.md).
+Open SWE separates **caller authentication**, **authorization**, and the credential an agent may use. A signed-in dashboard identity does not by itself authorize a repository or permit personal credentials in a run; the persisted thread scope, workspace ownership, and GitHub checks are separate gates. This page complements [sandbox lifecycle](../architecture/sandbox-lifecycle.md), [sandbox providers](../integrations/sandbox-providers.md), [configuration](../operations/configuration.md), and [invocation](../workflows/invocation.md).
 
-## GitHub authority for runs
+## Dashboard login and browser protections
 
-`agent.github.token.resolve_github_token` chooses an acting credential from run context. For `slack`, `linear`, `dashboard`, and `schedule` runs with a mapped `github_login`, it first reads that user's valid dashboard OAuth credential. This lookup deliberately wins even in bot-token-only mode, preserving user attribution for operations such as pull-request creation. If it is unavailable, interactive mode raises `GitHubUserAuthRequired`; only bot-token-only mode falls back to the GitHub App installation credential. Bot-only mode is the deployed configuration where `LANGSMITH_API_KEY` is present and neither `X_SERVICE_AUTH_JWT_SECRET` nor `USER_ID_API_KEY_MAP` can support per-user LangSmith auth.
+The dashboard authenticates through the GitHub App OAuth code flow. `GET /dashboard/api/auth/login` creates a random nonce, stores its HMAC in an HS256 state JWT, and puts the raw nonce in `osw_oauth_state`. The callback decodes the state and constant-time compares the cookie-derived HMAC before exchanging the code, fetching the GitHub identity, applying the GitHub authorization gate, storing the OAuth tokens, and creating the local user/session.
 
-For other interactive paths, GitHub-originated runs map login to email and use the LangSmith user-auth flow; other sources use the configured user email. A missing source is an error because the system cannot safely route an auth failure response.
+The session is an HS256 JWT signed with `DASHBOARD_JWT_SECRET`, placed in the `HttpOnly` `osw_session` cookie for seven days. `require_session` rejects a missing or invalid cookie. `/me` returns the signed-in identity and evaluates admin status from the current configured-admin list rather than trusting a claim embedded in the session.
 
 ```mermaid
 sequenceDiagram
-    participant Run as Agent run
-    participant Resolver as Token resolver
-    participant Store as Dashboard OAuth store
-    participant App as GitHub App
-    participant Cache as Process cache
+    participant Browser
+    participant Dashboard
+    participant GitHub
+    participant UserStore as User and token store
 
-    Run->>Resolver: source and GitHub login
-    alt mapped source has user credential
-        Resolver->>Store: retrieve valid OAuth token
-        Store-->>Resolver: user token
-        Resolver->>Cache: cache by thread and principal
-    else bot-only deployment
-        Resolver->>App: mint installation token
-        App-->>Resolver: bot token
-        Resolver->>Cache: cache as bot principal
-    else interactive deployment
-        Resolver-->>Run: GitHubUserAuthRequired
-    end
+    Browser->>Dashboard: GET auth login
+    Dashboard->>Browser: State JWT and nonce cookie
+    Browser->>GitHub: Authorize with state
+    GitHub->>Dashboard: Callback with code and state
+    Dashboard->>Dashboard: Verify nonce binding
+    Dashboard->>GitHub: Exchange code and fetch user
+    Dashboard->>Dashboard: Check allowed user or organization
+    Dashboard->>UserStore: Encrypt and store OAuth tokens
+    Dashboard->>Browser: Redirect with session cookie
 ```
 
-Token resolution for a mapped, user-triggered run.
+The browser OAuth flow binds the callback to the browser nonce before it creates a session or persists a credential.
 
-### Cache and GitHub App lifetimes
+`sanitize_redirect_to` permits a relative non-protocol-relative path, or an absolute URL whose normalized origin is `DASHBOARD_BASE_URL` or one of `DASHBOARD_ALLOWED_ORIGINS`. It rejects dashboard login/API paths as destinations as well as unlisted origins. This prevents both an external open redirect and redirect loops.
 
-Run-token cache entries live only in process memory and are keyed by `(thread_id, principal)`. Normalized `login:` or `email:` principals isolate users; `bot` is a separate principal. The cache refuses an unbound user token, expires an entry at token expiry with a 60-second skew or after 24 hours, and can invalidate every entry for a thread after stale or revoked credentials are detected.
+Cookie flags depend on deployment topology: an HTTPS split-origin dashboard gets `Secure; SameSite=None`; same-origin and local HTTP use `SameSite=Lax`. The state cookie is `HttpOnly`, `SameSite=Lax`, scoped to `/dashboard/api/auth`, and limited to the ten-minute state lifetime. Unsafe cookie-authenticated HTTP requests must carry an allowed `Origin` or `Referer` when dashboard origins are configured. Safe methods are exempt. A bearer-only request with no session cookie is exempt because that header is not an ambient browser credential. With no configured dashboard origins the origin check intentionally does nothing for local development; credentialed CORS is enabled only for explicit origins and rejects `*`.
 
-The App signs an RS256 JWT—issued 60 seconds in the past for clock skew and valid for nine minutes—and exchanges it for an installation access token. Its in-process cache is segregated by installation ID, repository IDs/names, and requested permissions. Cached installation tokens are no longer reused within ten minutes of expiry. Missing App configuration or an invalid installation yields no token rather than an unauthenticated request.
+### Who may sign in and administer
 
-### Sandbox proxy boundary
+At startup, production authentication requires `ALLOWED_GITHUB_USERS`, `ALLOWED_GITHUB_ORGS`, or `OPEN_SWE_LOCAL_AUTH_TOKEN`; an absent configuration is a startup error. A GitHub login is authorized if it constant-time matches the user allowlist or is an active member of an allowlisted organization. Organization membership uses the GitHub App path and does not turn lookup failures into authorization. This is a fail-closed change from configurations that allowed every GitHub account.
 
-A LangSmith sandbox is configured with a GitHub **App installation** token through opaque proxy headers. The sandbox environment receives `GH_TOKEN=proxy-injected`, not the real token; API traffic to `api.github.com` receives Bearer auth and traffic to `github.com` receives Basic `x-access-token` auth. The proxy token expiry record retains repository and permission scope so a refresh cannot broaden authority. Before each model call, middleware refreshes a near-expiry proxy token; a reused sandbox that cannot be reconfigured is treated as unreachable rather than silently continuing with stale access.
+`CONFIGURED_ADMINS` is a comma-separated, case-insensitive set of GitHub logins and emails. Dashboard admin dependencies re-evaluate it from the session identity, and startup synchronizes configured admins into local user records. Administration should therefore be granted by configuration, not by editing thread metadata.
 
-## Dashboard authentication
+The desktop flow never puts the dashboard session on its loopback callback. Instead it sends a 120-second signed handoff code containing inert identity claims and the desktop application's S256 PKCE challenge to a fixed `127.0.0.1` callback. `/auth/desktop/exchange` mints the session only after a constant-time verifier comparison. Cloud-terminal tickets are distinct 60-second JWTs bound to the terminal audience and requested `thread_id`; the terminal connection is additionally authorized for that thread before the WebSocket is accepted.
 
-The dashboard uses the GitHub App OAuth code flow and an HS256 session JWT signed with `DASHBOARD_JWT_SECRET`. `osw_session` is valid for seven days; `require_session` rejects absent or invalid sessions, and `/me` returns the session identity and a freshly evaluated `is_admin` flag.
+Slack account linking uses Slack OpenID Connect with `openid email profile`, obtains the Slack-verified user and workspace claims from `userinfo`, and can restrict linking to `SLACK_TEAM_ID`. A cross-workspace identity, including one reached through Slack Connect, is rejected. Shared Slack auth-failure notices deliberately point only to the token-free settings URL, not to a user-specific authorization URL that another participant could complete.
 
-`GET /dashboard/api/auth/login` generates a random nonce, places its HMAC in the signed state JWT, and stores the raw nonce in `osw_oauth_state`. The callback constant-time compares the recomputed HMAC before exchanging the OAuth code and identifying the GitHub user. It applies the organization gate before persisting the OAuth result or issuing a session. `sanitize_redirect_to` admits only a non-protocol-relative relative path or an absolute origin in `DASHBOARD_BASE_URL` plus `DASHBOARD_ALLOWED_ORIGINS`; it rejects login and API callback paths to prevent open-redirect loops and attacker-controlled destinations.
+## Thread scope determines agent authority
 
-Session cookies are `HttpOnly`. The API uses `Secure; SameSite=None` only for HTTPS split-origin deployments; same-origin or HTTP deployments use `SameSite=Lax`. The state cookie is also `HttpOnly`, `SameSite=Lax`, scoped to `/dashboard/api/auth`, and has the 10-minute state lifetime.
+`credential_scope` reads the saved thread metadata rather than accepting scope from the run configuration. Visibility must be `public` or `private`; owner type may be absent, `user`, or `system`; and a system thread may not be private. Metadata that violates any of these invariants fails before a personal credential is read.
 
-### Membership, desktop, and automation entrypoints
+For a **public** thread, `resolve_github_token` invalidates the thread cache and resolves a GitHub App installation token. For a **private** thread, the initiating login must match the saved `owner_login` case-insensitively; only then does it retrieve that owner's dashboard OAuth token. A missing credential raises `GitHubUserAuthRequired`—it never degrades a private run to the workspace bot, even if bot-token-only deployment settings are present.
 
-`ALLOWED_GITHUB_ORGS` is a shared comma-separated allowlist. With entries, a login must be an active member of at least one organization; membership is checked through that organization's App installation with `members: read`, and missing installation/token, HTTP/parsing error, or inactive/non-member result fails closed with 403. With no entries, login intentionally fails open for compatibility and logs once per process that all GitHub accounts may log in and read surfaced threads.
+This boundary also applies to personal integrations and pull-request authorship. Personal integration loaders receive a login only for a private thread owned by the current requester. For PR publication, a private thread uses its owner; a public user-owned or legacy owned thread uses the authenticated requester rather than the saved owner; a system thread uses bot authority. Background completion refuses to publish for a user-associated thread because it cannot identify the requester.
 
-Desktop login avoids placing a browser session on the loopback redirect. The callback instead sends a 120-second signed handoff code containing inert identity claims and the app's S256 PKCE challenge to a fixed `127.0.0.1` callback. The desktop exchange mints a session only after a constant-time verifier check. Cloud terminal tickets are separate 60-second JWTs, validated for fixed audience and the requested `thread_id`.
+## GitHub credentials, repositories, and sandboxes
 
-Cookie-authenticated mutations have an origin check: safe methods are exempt, and unsafe requests must have an allowed `Origin` or `Referer` when dashboard origins are configured. Bearer-only GitHub-token requests without a session cookie are exempt because the credential is not ambient browser state. No configured dashboard origins makes this check a local-development fail-open default. CORS is added only for configured origins and refuses `*` with credentials.
+GitHub App installation tokens are obtained through the App SDK only when the app ID, private key, and positive installation ID are configured. The in-process App-token cache is keyed by installation ID, repository IDs or names, and normalized permissions, so a less-restricted request cannot reuse a differently scoped token. A token is cached only until ten minutes before its GitHub expiry; minting/configuration failures return no token rather than making an unauthenticated request.
 
-Certain admin endpoints additionally accept an explicit GitHub bearer token or Actions OIDC token. For a GitHub token, the service resolves `/user` and, if needed, the primary address from `/user/emails`, then requires that login or email to match `CONFIGURED_ADMINS`; an installation token that cannot identify a user is rejected.
+Dashboard repository actions use the signed-in user's OAuth token to call GitHub's repository endpoint. A 401 forces one refresh-and-retry; 403 and 404 become explicit no-access/not-found responses. Workspace checks use the GitHub App installation token and distinguish unavailable App authentication from a repository unavailable to the workspace.
 
-Slack account linking uses Slack OIDC claims rather than user-supplied identity. If `SLACK_TEAM_ID` is configured, a different workspace is rejected, including Slack Connect identities. Authentication failure notices in shared Slack threads link only to the token-free dashboard settings URL, never to a user-specific authorization URL.
+For sandbox traffic, `workspace_token` intersects an optional requested repository set with the saved workspace repository set. `repository_token` then enumerates repositories accessible to the App installation and requests a token by matched repository IDs. If there is no match it returns no sandbox credential; the installation-wide discovery token remains server-side. Thus a snapshot fallback or client repository request cannot expand a sandbox's repository authority.
 
-## Authenticating inbound calls
+A LangSmith sandbox receives GitHub authentication through proxy configuration, not an environment secret: `GH_TOKEN` is the fixed placeholder `proxy-injected`, while opaque proxy rules attach the actual token as `Bearer` authentication for `api.github.com` and Basic `x-access-token` authentication for `github.com` hosts. The proxy records the token expiry, repository scope, permission scope, workspace, and base proxy configuration per thread. Near expiry it remints and reconfigures using the recorded scope; an explicitly requested refresh can only intersect, never broaden, the recorded repositories.
 
-Webhook verifiers operate on raw request bodies and fail closed when their secret is missing:
+### Credential persistence and caching
 
-- GitHub computes `sha256=HMAC(GITHUB_WEBHOOK_SECRET, body)`, constant-time compares `X-Hub-Signature-256`, and the GitHub route rejects failures before parsing the payload.
-- Slack constant-time compares the HMAC of `v0:timestamp:body` and rejects timestamps more than 300 seconds from now, limiting replay.
-- Linear constant-time compares its raw-body HMAC-SHA256 against `Linear-Signature`.
-- `/webhooks/run-complete` compares its query token with `RUN_COMPLETE_WEBHOOK_SECRET` in constant time. Without that secret every call is rejected and run-failure replies remain disabled.
+Dashboard OAuth access and refresh tokens are encrypted before persistence. `TOKEN_ENCRYPTION_KEY` accepts a newest-first comma- or newline-separated Fernet key list: the first key encrypts and `MultiFernet` tries each key to decrypt, enabling key rotation. Invalid ciphertext or an unavailable key decrypts as an empty value rather than raising. Tokens near expiry are refreshed under a per-login lock. A permanent GitHub refresh error (`bad_refresh_token` or `unauthorized_client`) deletes the old authorization unless a concurrent callback already stored a newer refresh token.
 
-## Credential storage and authorization gates
+Resolved run tokens are process memory only, keyed by `(thread_id, principal)`. `login:` and `email:` principals isolate user tokens; `bot` is separate, and caching a user token without a principal is refused. Entries are discarded within 60 seconds of token expiry or after a 24-hour hard cap; invalidation clears all entries for a thread. A downstream GitHub 401 is represented as `GitHubAuthError` so callers can invalidate and resolve again rather than continue with a revoked token.
 
-`TOKEN_ENCRYPTION_KEY` may contain one key or a newest-first comma/newline-separated Fernet key list. `MultiFernet` encrypts with the first key and attempts all keys for decryption, supporting rotation. Invalid ciphertext or an unavailable key yields an empty decrypted value rather than raising. Dashboard profile OAuth records encrypt both GitHub access and refresh tokens before storing them. A near-expiry GitHub credential is refreshed under a per-login lock; GitHub's permanent `bad_refresh_token` and `unauthorized_client` errors cause the old authorization to be deleted unless a concurrent OAuth callback has already replaced it.
+## Inbound and prompt trust boundaries
 
-Authentication is not authorization. `CONFIGURED_ADMINS` matches emails or logins case-insensitively, and `require_admin` checks the triggering run identity at tool-call time instead of trusting thread metadata. Team observability tools are exposed only when the current run's identity is an admin or its email is in `OBSERVABILITY_AUTHORIZED_EMAILS`; the decision is intentionally evaluated per run to prevent attacker-influenced thread state from granting access.
+GitHub and Slack webhook routes read the raw body and authenticate it before processing the payload. GitHub requires `sha256=HMAC(GITHUB_WEBHOOK_SECRET, body)` in `X-Hub-Signature-256`; Slack requires a constant-time HMAC over `v0:timestamp:body` and rejects timestamps outside the 300-second replay window. Both reject when the respective signing secret is absent. GitHub deliveries are also ignored when their repository belongs to no workspace; temporary workspace-ownership lookup failures return 503 so GitHub retries rather than silently dropping work.
 
-Unmapped GitHub comment content is wrapped in reserved `<dangerous-external-untrusted-users-comment>` tags. Raw comments have those reserved tags replaced before wrapping, so an external author cannot forge the trusted delimiter.
+External GitHub comments are not automatically trusted prompt instructions. Reserved `<dangerous-external-untrusted-users-comment>` tags are stripped from raw input, then comments whose author is not in the trusted login set are wrapped in those tags. An external author therefore cannot manufacture the delimiter used to identify untrusted content.
 
-## Focused verification
+## Focused verification and safe changes
 
-`tests/auth/test_auth_sources.py` covers source-aware selection, user-over-bot precedence, bot fallback, and Slack notice secrecy. `tests/dashboard/test_dashboard_oauth_redirect.py` covers redirect allowlisting, state-cookie binding, and PKCE desktop exchange. Organization-gate tests cover active membership, multiple organizations, configured fail-closed behavior, unconfigured fail-open behavior, and the once-only warning. `tests/dashboard/test_github_token_auth.py` covers GitHub bearer identity resolution and the admin gate; `tests/sandbox/test_proxy_auth.py` verifies opaque proxy injection and that real keys do not enter sandbox environment variables.
+`tests/auth/test_thread_credential_scope.py` exercises public-versus-private authority, ownership mismatch failures, system-thread invariants, PR authorship, and the no-bot-fallback rule. `tests/auth/test_github_token_ttl.py` covers principal cache isolation, expiry/24-hour eviction, invalidation, downstream 401 behavior, and private-thread webhook rejection before credentials or dispatch. `tests/dashboard/test_dashboard_oauth_redirect.py` covers redirect, state, and desktop PKCE protections; `tests/dashboard/test_github_token_auth.py` verifies bearer parsing and the CSRF exception only when no session cookie is present.
+
+When changing these boundaries, preserve the ordering: validate external signatures before parsing; validate thread scope before resolving personal credentials; constrain repository scope before giving a token to the proxy; and re-check user/repository authority at the request that performs the action. Add focused tests for both the authorized path and the failure path—especially scope broadening, stale tokens, and cross-user/thread access.

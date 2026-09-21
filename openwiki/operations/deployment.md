@@ -1,16 +1,16 @@
 ---
 type: operations-guide
-title: Development, Deployment, and Serving
-description: Run Open SWE locally or in production, including the LangGraph runtime, bundled or separate dashboard serving, webhook exposure, and desktop boundaries. Covers Docker, mount-prefix coupling, and focused operational checks.
+title: Development, deployment, and release topology
+description: Run Open SWE locally, package and deploy its LangGraph backend and dashboard, expose webhooks safely, and operate desktop and sandbox-release tooling. Explains serving boundaries, runtime configuration, and production security constraints.
 tags: [deployment, local-development, docker, langgraph, dashboard, webhooks, desktop]
 verified:
   - by: openwiki/0.4.2
-    at: 2026-09-08T08:15:30.533Z
+    at: 2026-09-21T08:17:01.511Z
 sources:
-  - id: openwiki-source-328bde9e94017848bb09ba23
-    resource: repo://agent/api/app.py
   - id: openwiki-source-6e64b1ccdb133daeb8f4d1d4
     resource: repo://agent/utils/dashboard_ui.py
+  - id: openwiki-source-e201e686a785f09b6d899f0b
+    resource: repo://compose.yaml
   - id: openwiki-source-24f77a48f966a05631988d08
     resource: repo://desktop/package.json
   - id: openwiki-source-2f66613e587b7c57d9be522e
@@ -21,8 +21,6 @@ sources:
     resource: repo://docs/DEVELOPMENT.md
   - id: openwiki-source-bb241754e70259fd67d23952
     resource: repo://docs/INSTALLATION.md
-  - id: openwiki-source-ecbd921918a39d63e3d230c1
-    resource: repo://examples/github-actions/set-base-snapshot.yml
   - id: openwiki-source-2d11873424257deb506bd9cd
     resource: repo://examples/ngrok/webhooks-only.yml
   - id: openwiki-source-b76f79b6cfae139d1784a43a
@@ -31,140 +29,100 @@ sources:
     resource: repo://langgraph.json
   - id: openwiki-source-012f2c78e3b1446dfc35803f
     resource: repo://Makefile
-  - id: openwiki-source-5b54a58d1b51cd490b0e7162
-    resource: repo://package.json
-  - id: openwiki-source-40275cb92c3610938f16ade3
-    resource: repo://pnpm-workspace.yaml
-  - id: openwiki-source-05ccef8d4cf1698187f20464
-    resource: repo://pyproject.toml
   - id: openwiki-source-abd87505fae29e34eafc785d
     resource: repo://scripts/create_sandbox_snapshot.py
   - id: openwiki-source-f33397bb846fdff018dc1c94
     resource: repo://scripts/install_desktop.sh
   - id: openwiki-source-8328043d526fe7293c1c1950
     resource: repo://scripts/purge_wakeup_crons.py
-  - id: openwiki-source-440ae1e215cb02721dda855c
-    resource: repo://turbo.json
   - id: openwiki-source-8b88ebeda33de308d80fcab2
     resource: repo://ui/Dockerfile
   - id: openwiki-source-cee8c9d42a08db69733a075f
     resource: repo://ui/server/backend-proxy.ts
   - id: openwiki-source-a741d432f952c0dbfb4fb35d
     resource: repo://ui/vite.config.ts
-generated: { by: "openwiki/0.4.2", at: "2026-09-08T08:15:30.533Z" }
+generated: { by: "openwiki/0.4.2", at: "2026-09-21T08:17:01.511Z" }
 ---
 
-# Development, Deployment, and Serving
+# Development, deployment, and release topology
 
-Open SWE's normal topology is one LangGraph deployment: five graphs (`agent`, `reviewer`, `analyzer`, `chat`, and `scheduler`), the FastAPI application `agent.webapp:app`, and—when a dashboard build is available—the dashboard at the same origin. The FastAPI composition owns dashboard, plan, workflow-approval, health, and GitHub/Linear/Slack webhook routers; LangGraph owns its runtime routes.
+Open SWE normally runs as one LangGraph deployment: the `agent`, `reviewer`, `analyzer`, `chat`, and `scheduler` graphs, plus `agent.webapp:app`. The FastAPI app owns the dashboard API, plan and workflow-approval APIs, health routes, and GitHub, Slack, and Linear webhook routers; LangGraph owns runtime routes. A dashboard build can be served at that same public origin, avoiding cross-origin session-cookie and CORS setup.
 
-The same-origin deployment is the default because relative `/dashboard/api/*` calls and the `osw_session` cookie need no browser CORS configuration. See [Configuration](configuration.md) for the complete environment contract, [Dashboard UI](../integrations/dashboard-ui.md) for UI behavior, and [Invocation](../workflows/invocation.md) for how requests become runs.
-
-## Local serving modes
-
-Install backend development dependencies with:
-
-```bash
-make install
+```mermaid
+flowchart LR
+  Browser["Browser"] --> Public["Public deployment origin"]
+  GitHub["GitHub Slack Linear"] -->|"webhooks"| Public
+  Public --> FastAPI["FastAPI custom routes"]
+  Public --> Runtime["LangGraph runtime routes"]
+  FastAPI --> Dashboard["bundled dashboard or Vite proxy"]
+  Runtime --> Postgres["Postgres"]
+  Runtime --> Redis["Redis workers"]
 ```
 
-This runs `uv sync --extra dev`. The full local runtime is:
+This topology shows the same-origin production arrangement and the boundary between custom FastAPI routes and LangGraph runtime routes.
 
-```bash
-make dev
-```
+See [Configuration](configuration.md) for the full environment contract, [Dashboard UI](../integrations/dashboard-ui.md) for browser behavior, and [Sandbox providers](../integrations/sandbox-providers.md) for sandbox configuration.
 
-It executes `uv run langgraph dev --no-browser --port 2024`. `langgraph.json` is the serving manifest: it selects Python 3.14 and LangGraph API 0.13.3, registers all five graphs and `agent.webapp:app`, loads `.env`, and configures checkpoint deletion (a 60-minute sweep and a 43,200-minute default TTL). The project constrains locally resolved `langgraph-api` to `>=0.13.3,<0.14` so uv tests the manifest's runtime rather than resolving the end-of-life 0.10.3 release.
+## Local development
 
-Build the dashboard before starting that server when the backend should serve it itself:
+Install the backend development extra with `make install` (`uv sync --extra dev`). `langgraph.json` is the full-serving manifest: Python 3.14, LangGraph API 0.13.3, all five graphs, `agent.webapp:app`, `.env`, and delete-on-TTL checkpoint cleanup (60-minute sweep and 43,200-minute default).
 
 ```bash
 make build-dashboard
 make dev
 ```
 
-`make build-dashboard` writes the client build to `ui/.output/public`. The backend discovers that directory by default (or an explicit `DASHBOARD_STATIC_DIR`) and serves the shell at non-reserved HTML routes. It deliberately declines `/dashboard/api`, `/webhooks`, `/health`, and LangGraph-owned prefixes such as `/threads` and `/runs`, so the catch-all cannot shadow API endpoints. Hashed assets are immutable-cacheable, while the shell is revalidated so a new build can refer to new asset hashes.
+`make dev` first starts the local Postgres Compose service unless `POSTGRES_URI` is already set, refuses to start if port 2024 is occupied, then runs `uv run langgraph dev --no-browser --port 2024 --n-jobs-per-worker 10`. The Compose database is Postgres 16 on loopback port 5433 with a named volume; it preserves local application data when its container stops. LangGraph local state is separately persisted under `.langgraph_api` in the working directory, so only one backend should use a shared state directory at a time.
 
-```mermaid
-flowchart TD
-  Full["make dev"] --> LG["LangGraph dev on port 2024"]
-  LG --> Graphs["five graph entrypoints"]
-  LG --> API["FastAPI app"]
-  API --> Routes["dashboard API webhooks health"]
-  API --> UI["bundled dashboard when built"]
-  HTTP["make run"] --> Uvicorn["FastAPI only on port 8000"]
-```
+The backend's in-repository dashboard lookup is `ui/.output/public`, produced by `make build-dashboard`; `DASHBOARD_STATIC_DIR` selects another build directory. The UI catch-all declines custom API and LangGraph-owned prefixes such as `/dashboard/api`, `/webhooks`, `/health`, `/threads`, and `/runs`, preventing it from shadowing those endpoints. It serves only existing files or HTML navigation: hashed assets are immutable-cacheable and the client shell is `no-cache` so it can reference a new asset hash after deployment.
 
-The diagram contrasts the full LangGraph runtime with the HTTP-only development server.
+`make run` is deliberately narrower: it runs `uvicorn agent.webapp:app --reload --port 8000`, without the LangGraph runtime. Use it for FastAPI-only work; dashboard features that create LangGraph runs require `make dev`.
 
-`make run` executes `uv run uvicorn agent.webapp:app --reload --port 8000`. It is useful for narrow FastAPI work, but does not start LangGraph; anything that creates runs, including dashboard Agents features, requires `make dev`.
+### Dashboard development
 
-### UI hot reload and direct Vite access
+Use `make dev-ui` for same-origin hot reload. It runs `make web` and `make dev` concurrently, supplies `DASHBOARD_DEV_SERVER_URL=http://localhost:3000` to the backend, and keeps the browser at `http://localhost:2024`. The backend reverse-proxies non-reserved UI requests to Vite, while API and runtime routes stay local; the HMR WebSocket connects directly to port 3000.
 
-For normal UI work, use:
+`make web` alone invokes the dashboard's Turbo/Vite development task on port 3000. In that mode its development proxy forwards backend prefixes to `DASHBOARD_API_URL`, defaulting to `http://localhost:2024`. Opening Vite directly changes the browser origin: set `DASHBOARD_BASE_URL` and `DASHBOARD_API_BASE_URL` to `http://localhost:3000`, register `http://localhost:3000/dashboard/api/auth/callback` with the GitHub App, and configure any additional credentialed caller in `DASHBOARD_ALLOWED_ORIGINS`. The FastAPI app rejects `*` in that setting because credentialed CORS cannot safely use a wildcard.
 
-```bash
-make dev-ui
-```
+The dashboard build invariant is that `DASHBOARD_BASE_PATH` equals the LangGraph `http.mount_prefix` where it is served. That value controls both client routing and asset URLs. For a local mounted deployment, pass `DASHBOARD_BASE_PATH=/<prefix>/ make build-dashboard` and use the mounted `LANGGRAPH_URL`; the platform build derives it from the manifest's mount prefix. A mismatch breaks asset or client-route resolution.
 
-This starts `make web` and `make dev` together. Vite listens on port 3000, while the backend is given `DASHBOARD_DEV_SERVER_URL=http://localhost:3000` and reverse-proxies non-reserved UI requests. Open `http://localhost:2024`: API calls, login callbacks, and cookies remain on the backend origin, but modules arrive from Vite. The HMR WebSocket is intentionally direct to Vite's port, not forwarded through FastAPI.
+### Local webhook exposure
 
-`make web` alone runs the dashboard Vite server. In development it proxies backend prefixes to `DASHBOARD_API_URL`, defaulting to `http://localhost:2024`. Opening Vite directly at `http://localhost:3000` instead makes that frontend origin part of the login and CSRF contract: set `DASHBOARD_BASE_URL` and `DASHBOARD_API_BASE_URL` to that origin and add its callback URL, `http://localhost:3000/dashboard/api/auth/callback`, to the GitHub App. `DASHBOARD_ALLOWED_ORIGINS` is only for additional credentialed origins; FastAPI rejects `*` because credentials are enabled.
-
-### Mount-prefix invariant
-
-The dashboard build's base path must equal the LangGraph `http.mount_prefix` at which the backend serves it. `DASHBOARD_BASE_PATH` controls Vite's router and asset base. For a local prefixed server, build with `DASHBOARD_BASE_PATH=/<prefix>/ make build-dashboard` and keep `LANGGRAPH_URL` on that mounted URL. The platform manifest extracts `http.mount_prefix` during its image build and supplies the corresponding build value automatically. A mismatch causes client routes or asset URLs to point outside the mounted application.
-
-## Webhooks during local development
-
-`langgraph dev` does not authenticate raw LangGraph API routes. Do not expose port 2024 wholesale. `make tunnel NGROK_DOMAIN=<name>.ngrok-free.dev` runs ngrok against port 2024 with `examples/ngrok/webhooks-only.yml`; the policy returns 404 for every path except `/webhooks/*`. GitHub, Slack, and Linear can therefore deliver to the public hostname while dashboard and LangGraph access stays local. Another tunnel is acceptable only if it provides an equivalent allowlist.
-
-Point integration settings at the public webhook paths—such as `/webhooks/github`, `/webhooks/slack`, and `/webhooks/linear`—and use the URL where the dashboard is actually opened for the GitHub OAuth callback. Restart `make dev` after changing `.env`: it reloads code but not environment configuration.
+`langgraph dev` does not authenticate raw runtime routes. Do not publish port 2024 broadly. `make tunnel NGROK_DOMAIN=<name>.ngrok-free.dev` exposes port 2024 through the ngrok policy in `examples/ngrok/webhooks-only.yml`, which returns 404 outside `/webhooks/*`. This allows integration delivery while keeping dashboard and raw LangGraph access local. When Slack OAuth is configured, retain a policy that relays its callback to localhost without exposing dashboard routes. Restart `make dev` after editing `.env`, because code reload does not reload environment configuration.
 
 ## Production backend
 
-There are two supported backend delivery paths:
+Two backend paths are supported:
 
-- **LangGraph Platform:** connect the repository in LangSmith Deployments. `langgraph.json` builds and copies the dashboard into the platform image; a dashboard-build failure is logged but does not prevent backend deployment. The platform injects `LANGSMITH_API_KEY`, tracing, and project values.
-- **Standalone Docker:** build the root image with `docker build -t open-swe .`. It is a LangGraph API server image, not a sandbox image. Its `langchain/langgraph-api:0.13.3-py3.14` base and environment registrations mirror the five graphs, FastAPI app, and checkpointer policy in the manifest, and it exposes port 8000.
+- **LangGraph Platform:** connect the repository in LangSmith Deployments and set the application environment. The `dockerfile_lines` in `langgraph.json` build the dashboard for the manifest mount prefix, copy it to `/opt/open-swe-dashboard`, stamp backend build info, and set `DASHBOARD_STATIC_DIR`. The dashboard build is best-effort, so an error leaves the backend deployable without bundled UI.
+- **Standalone Docker:** run `docker build -t open-swe .`. The root image is a LangGraph API server, not a sandbox image. It uses `langchain/langgraph-api:0.13.3-py3.14`, installs the repository, registers the five graphs, FastAPI app, and checkpoint TTL through environment variables, and exposes port 8000. Unlike the platform build, it does not build the dashboard; build `ui/.output/public` before the Docker build or point `DASHBOARD_STATIC_DIR` at a supplied build.
 
-For a standalone server, provide `DATABASE_URI` (Postgres), `REDIS_URI`, `LANGSMITH_API_KEY`, `LANGGRAPH_CLOUD_LICENSE_KEY`, and the public backend `LANGGRAPH_URL`; publish port 8000 through ingress. Do not choose scale-to-zero hosting: background work depends on Redis- and Postgres-backed workers remaining available. The image only serves a dashboard if `ui/.output/public` was built before `docker build`, or if `DASHBOARD_STATIC_DIR` names a build directory.
+A standalone Agent Server needs `DATABASE_URI`, `REDIS_URI`, `LANGSMITH_API_KEY`, `LANGGRAPH_CLOUD_LICENSE_KEY`, and public `LANGGRAPH_URL`, as well as the normal application configuration. Keep workers available: scale-to-zero hosting is unsuitable because background work relies on Redis- and Postgres-backed workers. When application analytics is enabled, application migrations use `POSTGRES_URI`, not `DATABASE_URI` alone.
 
-The standalone image defaults to `LANGGRAPH_AUTH_TYPE=noop`, which leaves raw LangGraph routes open to any network client. Use `LANGGRAPH_AUTH_TYPE=langsmith` with `LANGSMITH_AUTH_ENDPOINT` and `LANGSMITH_TENANT_ID`, or place the service behind private networking or an authenticated gateway. Dashboard session and webhook signature checks do not secure raw `/threads`, `/runs`, `/assistants`, or `/store` endpoints.
+The standalone image defaults to `LANGGRAPH_AUTH_TYPE=noop`; network clients could call raw `/threads`, `/runs`, `/assistants`, and `/store` routes. Prefer `LANGGRAPH_AUTH_TYPE=langsmith` with `LANGSMITH_AUTH_ENDPOINT` and `LANGSMITH_TENANT_ID`, or enforce an authenticated private-network/gateway boundary. Dashboard sessions and webhook signature validation protect custom routes only.
 
-```mermaid
-flowchart LR
-  User["Browser"] --> Origin["same-origin backend and dashboard"]
-  Origin --> FastAPI["dashboard API and webhooks"]
-  Origin --> LangGraph["graphs and runtime routes"]
-  LangGraph --> Postgres["Postgres"]
-  LangGraph --> Redis["Redis workers"]
-  Webhook["GitHub Slack Linear"] --> FastAPI
-```
-
-The default production topology keeps browser traffic and webhook delivery on one public deployment origin.
-
-When public URLs change, update `LANGGRAPH_URL`, webhook targets, and the GitHub callback (`<dashboard API base URL>/dashboard/api/auth/callback`). `DASHBOARD_BASE_URL` and `DASHBOARD_API_BASE_URL` normally default to `LANGGRAPH_URL` when the backend serves a build or fronts Vite.
+When the public URL changes, update `LANGGRAPH_URL`, webhook URLs, and the GitHub callback at `<dashboard API base URL>/dashboard/api/auth/callback`.
 
 ## Separate dashboard deployment
 
-A separate dashboard is optional. `ui/Dockerfile`, built from the repository root with `docker build -f ui/Dockerfile .`, uses a multi-stage Node 24 build, a frozen pnpm workspace install, and runs the Nitro `.output` server as user `node` on port 8080. `DASHBOARD_API_URL` is read for each request, not baked into the image, so the same image can front different backends; the production handler fails explicitly if it is unset.
+A separate frontend is optional. Build it from the repository root with `docker build -f ui/Dockerfile .`. The multi-stage Node 24 image does a frozen pnpm workspace install, builds the Nitro output, and serves it as user `node` on port 8080. It reads `DASHBOARD_API_URL` at request time, permitting the same image to front different backends; it throws rather than guessing a backend if the variable is absent.
 
-The handler proxies `/dashboard/api/**` and `/webhooks/**`, preserves path and query, streams non-GET bodies, forwards separate `Set-Cookie` headers, and leaves OAuth redirects for the browser to follow. Set the backend's `DASHBOARD_BASE_URL` and `DASHBOARD_API_BASE_URL` to the frontend origin and register its callback for the same-origin proxy arrangement. Alternatively, build with `VITE_DASHBOARD_API_BASE_URL` set to the backend, keep `DASHBOARD_API_BASE_URL` on the backend, and include the frontend origin in `DASHBOARD_ALLOWED_ORIGINS`; the client then resolves the session after hydration. Never use secrets in `VITE_*` values because they are build-time browser data.
+In production, the Nitro proxy forwards the original path and query, streamed non-GET bodies, and distinct `Set-Cookie` headers. It preserves OAuth redirects rather than following them server-side. The separate deployment proxies `/dashboard/api/*` and `/webhooks/*` to the backend, so set the backend's `DASHBOARD_BASE_URL` and `DASHBOARD_API_BASE_URL` to the frontend origin and register that origin's GitHub callback. Alternatively, build with `VITE_DASHBOARD_API_BASE_URL` pointing directly to the backend, retain the backend API base URL, and add the frontend origin to `DASHBOARD_ALLOWED_ORIGINS`. `VITE_*` values are browser-visible build inputs and must not contain secrets.
 
-The pnpm workspace comprises `ui`, `desktop`, and `tests/e2e`. Turborepo runs package `dev`, `build`, `typecheck`, `test`, and `check` tasks; build cache inputs include `DASHBOARD_API_URL`, `VERCEL`, `E2E_HARNESS`, and `VITE_*`. Root `lint` and formatting commands run oxlint/oxfmt directly rather than as Turbo tasks.
+The pnpm workspace contains `ui`, `desktop`, and `tests/e2e`. Turbo orchestrates package development, build, typecheck, test, and check tasks. Its build cache outputs include `.output/**`, `.vercel/output/**`, and `build/**`, and it treats `DASHBOARD_API_URL`, `SOURCE_COMMIT`, `VERCEL`, `E2E_HARNESS`, and `VITE_*` as build inputs. Root `lint` and formatting scripts instead run oxlint and oxfmt directly.
 
-## Desktop boundary
+## Desktop packaging and boundary
 
-The experimental Electron client bundles the compiled dashboard and asks packaged users for an organization backend URL on first launch; it does not select a maintainer-hosted backend. It proxies bundled UI dashboard calls to that selected backend, while a private loopback LangGraph server supports the **This Mac** local-agent mode. Cloud features and GitHub login use the selected shared backend; local mode can be used without GitHub sign-in but is limited to local projects and threads.
+The experimental Electron client bundles the compiled dashboard and a local backend resource. Packaged users choose and store a compatible organization backend URL; no maintainer-hosted backend is selected by default. Its `open-swe://app` UI proxies dashboard API traffic to that selected backend, while a private loopback LangGraph server provides **This Mac** local-agent work and stops with Electron. The desktop client does not expose the shared backend's raw LangGraph API to its browser UI.
 
-For source development, run `make dev` and `make desktop`; the desktop process defaults to `http://localhost:2024`, or accepts `--backend-url` / `OPEN_SWE_BACKEND_URL`. Its backend resolution order is command line, environment, saved configuration, then that development default. Package with `pnpm --dir desktop run pack` for an unpacked app or `pnpm --dir desktop run dist` for an installer. Both rebuild and package the dashboard plus local backend resources; this packaging does not deploy the hosted web app.
+For source development, run `make dev` and `make desktop`; the shared-backend default is `http://localhost:2024`. `--backend-url` or `OPEN_SWE_BACKEND_URL` overrides it before saved first-launch configuration and the development default. `pnpm --dir desktop run pack` creates an unpacked app and `pnpm --dir desktop run dist` creates an installer; both build the UI and package local-backend resources, rather than deploying the web application.
 
-On macOS, `make install-desktop` refuses a dirty checkout, fast-forwards `main`, and calls `scripts/install_desktop.sh`; `make install-checkout` uses the current checkout without changing Git state. The script is macOS-only, checks Node, `ditto`, uv, and a pnpm/corepack launcher, packages the application, then stages and swaps it into `/Applications` or `~/Applications`.
+On macOS, `make install-desktop` rejects a dirty working tree, fast-forwards `main`, and calls `scripts/install_desktop.sh`; `make install-checkout` packages the current checkout without changing Git state. The script is macOS-only, verifies Node, `ditto`, uv, and pnpm or Corepack, runs the frozen workspace install and pack, then stages and swaps the app into `/Applications` or `~/Applications`.
 
-## Focused checks and operational helpers
+`langgraph.desktop.json` is distinct from the hosted manifest: it exposes only the agent graph, uses `agent.local_auth:auth`, disables Studio authentication and the built-in UI, and configures a local checkpointer. This is the local-agent runtime boundary, not a general hosted deployment manifest.
 
-- `make test [TEST_FILE=...]` and `make integration_tests` run pytest in uv (and skip a missing requested directory); `make lint`, `make format`, and `make format-check` run Ruff across the repository. `make typecheck` runs `ty check agent tests`.
-- `scripts/create_sandbox_snapshot.py` creates a LangSmith sandbox snapshot from a Docker image through `SandboxClient`, then prints the UUID to use as `DEFAULT_SANDBOX_SNAPSHOT_ID`.
-- `scripts/purge_wakeup_crons.py` is a one-time backfill for expired one-shot `thread_wakeup` crons. Start with `--dry-run`; it resolves the target from `--url`/`LANGGRAPH_URL` and credentials from `LANGGRAPH_API_KEY` or `LANGSMITH_API_KEY` (including registered deprecated production aliases).
-- `examples/github-actions/set-base-snapshot.yml` is a copy-ready CI workflow that updates `/dashboard/api/sandbox-settings` using a short-lived GitHub Actions OIDC token. Enable `id-token: write` and constrain `ADMIN_OIDC_SUBJECTS`; an `owner/repo` entry matches `repository`, while an entry containing `:` matches `sub`. `ADMIN_OIDC_AUDIENCE` defaults to `open-swe`. A personal access token works only when its owner is in `CONFIGURED_ADMINS`; `secrets.GITHUB_TOKEN` is neither suitable OIDC nor an identifiable user credential.
+## Operational scripts and focused checks
+
+- Backend verification: `make test [TEST_FILE=...]` and `make integration_tests` run pytest through uv and skip a missing requested path; `make lint`, `make format`, `make format-check`, and `make typecheck` use Ruff and `ty check agent tests`. `make swagger` regenerates `swagger.json` from `agent.webapp:app`.
+- `scripts/create_sandbox_snapshot.py` creates a LangSmith sandbox snapshot with `SandboxClient`. It accepts name, Docker image, filesystem capacity, and API-key options; it prints the new identifier and directs operators to set it on a workspace through the dashboard.
+- `scripts/purge_wakeup_crons.py` is a one-time cleanup for expired one-shot `thread_wakeup` crons. Start with `--dry-run`; it resolves the target from `--url` or `LANGGRAPH_URL` and the key from `LANGGRAPH_API_KEY` or `LANGSMITH_API_KEY`.

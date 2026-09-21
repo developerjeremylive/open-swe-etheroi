@@ -1,8 +1,11 @@
 ---
 type: workflow
 title: Inbound Invocation to Durable Run
-description: How GitHub, Slack, Linear, dashboard, desktop, and scheduled automation inputs are admitted, attributed, routed to a thread, dispatched as durable LangGraph runs, and handled at completion.
-tags: [invocation, webhooks, dashboard, slack, linear, github, durable-runs, automation]
+description: How signed GitHub, Linear, and Slack callbacks, dashboard-managed schedules, and desktop-configured runs become typed, durable LangGraph executions. It documents admission gates, deterministic thread routing, dispatch defaults, and completion handling.
+tags: [invocation, webhooks, durable-runs, slack, linear, github, schedules]
+verified:
+  - by: openwiki/0.4.2
+    at: 2026-09-21T08:17:01.511Z
 sources:
   - id: openwiki-source-328bde9e94017848bb09ba23
     resource: repo://agent/api/app.py
@@ -10,10 +13,6 @@ sources:
     resource: repo://agent/api/health.py
   - id: openwiki-source-068d65a84c760eb8d555055e
     resource: repo://agent/completion.py
-  - id: openwiki-source-202e70aa1fb446ab05cc6d99
-    resource: repo://agent/dashboard/schedules.py
-  - id: openwiki-source-dc33a233b67bb1d08952543c
-    resource: repo://agent/dashboard/thread_api.py
   - id: openwiki-source-8c60a9544ea26006748dd7a3
     resource: repo://agent/desktop.py
   - id: openwiki-source-c48b309c5ca416cf623f0866
@@ -30,102 +29,107 @@ sources:
     resource: repo://agent/linear/webhook.py
   - id: openwiki-source-3e15117ace082a39e1f130d8
     resource: repo://agent/scheduler.py
+  - id: openwiki-source-bcdbf9656d4045712d8041c3
+    resource: repo://agent/schedules/routes.py
+  - id: openwiki-source-19dd52d603eb15a9bf38885d
+    resource: repo://agent/schedules/store.py
+  - id: openwiki-source-41a696e92db10ba3dc9c66b0
+    resource: repo://agent/slack/client.py
   - id: openwiki-source-e0785b4f2497c26e024d92fc
     resource: repo://agent/slack/routes.py
   - id: openwiki-source-4ffd3d31ffb2d798faaaad59
     resource: repo://agent/slack/webhook.py
   - id: openwiki-source-2df3763659a7f9d1944f28e7
     resource: repo://agent/thread_ids.py
-verified:
-  - by: openwiki/0.4.2
-    at: 2026-09-08T08:15:30.533Z
-generated: { by: "openwiki/0.4.2", at: "2026-09-08T08:15:30.533Z" }
+generated: { by: "openwiki/0.4.2", at: "2026-09-21T08:17:01.511Z" }
 ---
 
 # Inbound Invocation to Durable Run
 
-Open SWE accepts work from signed integration callbacks, an authenticated dashboard (including its desktop client path), and scheduler ticks. These sources deliberately converge at the same LangGraph thread/run boundary, but retain source context and structured sender identities so the graph can act with the right repository, user credential, response surface, and history. See [Auth and security](../concepts/auth-and-security.md) for access policy, [Threads and state](../concepts/threads-and-state.md) for persistence, and [Follow-up messages](follow-up-messages.md) for mid-run behavior.
+Open SWE has several ways to start work, but integration workers converge on a small durable-run contract. A trigger is admitted and attributed at its boundary, a worker resolves repository and thread context, writes source metadata where needed, constructs a typed `RunInput`, and calls `dispatch_agent_run` or `create_durable_run`. The latter is the only layer that sets the run's shared durability and stream behavior.
 
-## Common lifecycle
+The FastAPI app mounts dashboard APIs, plan and workflow-approval APIs, the three integration routers, and health/completion routes. Dashboard APIs are protected by the dashboard router's same-origin mutation dependency; schedule creation, modification, manual triggering, and deletion additionally require an administrator. The dashboard run-start proxy described in earlier versions is not present in this repository: dashboard-managed invocation here is through schedules, while the dashboard UI is mounted by the application.
+
+## End-to-end path
 
 ```mermaid
 sequenceDiagram
     participant Caller
-    participant Entry as API entrypoint
+    participant Route as Webhook route
     participant Worker as Background worker
-    participant Dispatch as dispatch_agent_run
-    participant LG as LangGraph
-    participant Complete as Completion handler
+    participant Dispatch as Durable dispatcher
+    participant Graph as LangGraph
+    participant Complete as Completion route
 
-    Caller->>Entry: signed webhook or authenticated command
-    Entry->>Entry: validate and admit
-    Entry->>Worker: schedule integration work when applicable
-    Entry-->>Caller: accepted response
-    Worker->>Worker: resolve identity repo thread and input
-    Worker->>Dispatch: structured input and configurable state
-    Dispatch->>LG: create durable run
-    LG->>Complete: completion webhook
-    Complete->>Caller: failure reply or deferred follow-up
+    Caller->>Route: signed event
+    Route->>Route: verify raw body and apply admission gates
+    Route-->>Caller: accepted or ignored response
+    Route->>Worker: schedule admitted integration work
+    Worker->>Worker: resolve repo identity thread and typed input
+    Worker->>Dispatch: dispatch_agent_run or create_durable_run
+    Dispatch->>Graph: create durable run
+    Graph->>Complete: terminal completion webhook
+    Complete->>Complete: settle status and notify on failure
 ```
 
-This shows the shared path: integration routes acknowledge after inexpensive admission checks, while dashboard commands proxy directly after enrichment.
+This sequence shows the asynchronous webhook path. Schedule ticks use the same dispatcher directly after the scheduler graph invokes `launch_scheduled_agent_run`.
 
-`create_app` composes the dashboard, plan and workflow-approval routes with Linear, Slack, health/completion, and GitHub routers. It rejects a wildcard dashboard CORS origin when credentials are enabled, and its lifespan validates sandbox and local-development model configuration before serving. This makes route composition and startup validation part of the invocation boundary rather than responsibility of each webhook. 
+## Admission is deliberately cheap and fail-closed
 
-## Admission and asynchronous webhook work
+GitHub, Linear, and Slack read raw request bytes, validate the platform signature before JSON parsing, and return `401` on failure. Slack's verifier also receives the timestamp header, so its signature verifier can reject stale deliveries. The routes then return explicit ignored/error/accepted results and place expensive API work in `BackgroundTasks`.
 
-GitHub, Linear, and Slack read the raw body and verify their respective HMAC signature before parsing JSON; invalid or missing signatures receive `401`. The verifiers fail closed when the signing secret is absent, and Slack additionally rejects timestamps older than five minutes. Routes return ignored/error/accepted JSON rather than creating a run for malformed or ineligible events.
+GitHub first rejects unsupported event types and unassigned workspaces; a workspace lookup outage returns `503` to invite GitHub retry instead of silently losing work. It has separate branches for PR state/review, push, CI, issues, PR comments, and reviewer-finding replies. Normal issue and comment work must be directed to Open SWE; repository allowlist and public-repository organization gates are applied before corresponding workers are scheduled.
 
-For accepted GitHub and Linear events, and the normal Slack message path, a FastAPI `BackgroundTasks` job does remote API access, metadata construction, and dispatch after the HTTP response. Slack claims an event id before scheduling to make delivery deduplication the gate to a run. It also rejects bots and self messages, validates message-update identity and content change, and only handles an ordinary non-code-channel message if it is a mention, DM, ready-plan reply, or permitted untagged two-party reply.
+Linear accepts only a non-bot `Comment` `create` that mentions Open SWE. It chooses a repository from an explicit comment reference, then the comment author's dashboard default, then the workspace default, and rejects a missing or disallowed result. The worker receives the extracted issue and triggering-comment information rather than trusting the webhook to create a run itself.
 
-Slack first obtains channel context. Operations are permitted only in DMs or channels confirmed not externally shared; an app mention in an external shared channel gets one deduplicated refusal reply and no run. A code channel is different: every interaction shares the channel's session thread and is treated as directed at Open SWE. Signed slash commands, code-channel actions, and supported Block Kit actions turn into explicit code-channel turns; plan/workflow approval actions instead update their approval state or enqueue the prescribed follow-up.
+Slack has the densest admission policy. It refuses unverified or externally shared channels; a qualifying app mention in an external shared channel gets one claimed refusal reply. It ignores bot/self messages, malformed updates, and edits without a user-visible text change. Outside code channels, ordinary messages must be an app mention or a DM; code channels instead treat every message as directed to their shared session. `claim_slack_event` gates background scheduling, making an already claimed delivery unable to start another Slack run. Before dispatch, conflicting Slack location mappings are surfaced as an error rather than guessed.
 
-## Surface-specific construction
+## Source-specific thread and input construction
 
 ### Slack
 
-The route resolves the Slack location before it schedules work. `resolve_slack_thread_id` prefers an explicit stored location mapping, then matching thread metadata, then the deterministic Slack-derived id. Conflicting metadata matches raise `SlackThreadMappingError`; the route tells the user it will not guess. A Slack worker fetches profile, thread history, channel context, mappings, and optional images, then records `SourceContext.slack_thread`, repository, user, title, environment, and plan mode in thread metadata/configurable state. A first message can select an environment with `env:<name>`; later turns retain the stored environment because the sandbox has already been chosen.
+Slack resolves the agent thread from its channel and Slack thread timestamp before it schedules the worker. The resolver prefers an explicit stored binding, then compatible metadata, and finally a deterministic Slack UUID; contradictory metadata raises `SlackThreadMappingError`. Code channels use a common session timestamp, while an opted-in DM session also reuses a stable session timestamp.
 
-Slack runs require a valid GitHub credential for the mapped triggering user unless the deployment is in bot-token-only mode, because coding work opens pull requests as that user. An unlinked or revoked credential produces an account-link/re-login prompt instead of dispatching. The worker serializes channel, people/bots, historical messages, operational context, and the current request into typed input. Explicit requests interrupt an active run; ordinary Slack follow-ups use `enqueue`. Message edits are queued rather than independently dispatched, so an edit corrects the existing conversation.
+The worker obtains channel context, the relevant history, profiles, linked GitHub identities, and optional image/file context. It records Slack source context, repository, owner/visibility, workspace, and model/plan selections in thread metadata and configurable state before dispatch. A first message can select a valid `workspace:<name>` (or legacy `env:<name>`) tag; later messages reuse the thread workspace because its sandbox is already chosen. A mapped user must also have a valid GitHub token unless the trigger is an approved bot; otherwise the worker posts an account-link or reauthentication prompt and does not dispatch.
+
+History and the current request become identity introductions plus typed human/system envelopes. Explicit requests—and DM-session turns—use `multitask_strategy="interrupt"`; other Slack follow-ups use `"enqueue"`. An edited Slack request is placed in the thread message queue rather than started as a standalone run, including when the thread is idle.
 
 ### Linear
 
-Linear accepts only a non-bot `Comment` `create` containing an Open SWE mention. Repository selection is intentionally deterministic in priority order: an explicit repository in the comment, the author's dashboard default, team/project mapping, then team default; the result must satisfy the repository allowlist. The background worker reacts 👀, uses the issue id as the thread key, fetches issue details, and selects the author email (falling back to creator then assignee) to map GitHub identity.
+The Linear worker derives the thread from the immutable issue id, determines a triggering identity from comment author, creator, or assignee, and builds configuration containing repository, Linear issue source context, workspace, source, and optionally the mapped GitHub login. It writes corresponding thread metadata before dispatch. The input has a system issue description followed by typed, attributed comment messages; image URLs may cause the selected model to be replaced with a vision-capable fallback.
 
-It upserts thread metadata with the Linear issue source context and builds a system issue description plus per-author human comment messages. Image URLs can cause a vision-model fallback when the selected model cannot accept images. The worker dispatches and posts a trace comment linking the resulting Open SWE thread.
+### GitHub and reviewer isolation
 
-### GitHub and reviewer runs
+For a normal PR comment, GitHub processing first recovers a UUID embedded in an Open SWE branch. If there is none, it derives a stable thread from owner, repository, and PR number and persists the branch metadata. It obtains a mapped user token, reacts with eyes, retries token refresh once on a GitHub authentication failure, fetches comments since the last Open SWE tag, serializes each author and comment, then invokes the coding-agent trigger path.
 
-The GitHub route accepts a broader event family: issue/comment work directed at Open SWE, PR state events, auto-review triggers, pushes, and CI. It filters unsupported actions, enforces the repo allowlist where applicable, applies the public-repository organization gate, and requires an Open SWE mention for normal issue/comment work. PR open/ready events can start automatic review when that repository enables it; pushes evaluate watched PRs; replies to a review finding route to the reviewer path.
+Reviewer runs do not share coding-agent state. First reviews, re-reviews, and replies to a review finding use `reviewer_thread_id` and `assistant_id="reviewer"`; metadata and check runs are maintained on that reviewer thread. Push re-review also requires a watched reviewer thread and avoids a run if the head SHA or PR diff has not materially changed.
 
-A coding PR-comment run recovers an Open SWE-created branch's embedded UUID; otherwise it derives the PR-comment thread id from owner, repository, and PR number. It resolves the author's mapped email/token, retries once after a GitHub authentication failure, reacts 👀, fetches comments since the last tag, introduces each author, and dispatches the accumulated human input. Issue runs use their own deterministic issue id. Reviewer work always uses the separate `reviewer_thread_id` namespace and `assistant_id="reviewer"`, keeping review state and the coding-agent graph isolated.
+### Schedules, automation, and desktop execution
 
-## Dashboard, desktop, and automation sources
+The dashboard schedule APIs expose authenticated listing and administrator-only mutation/manual-trigger operations. Schedule records validate five-field cron syntax and are represented by LangGraph crons targeting the `scheduler` assistant. On a tick, the scheduler graph calls `launch_scheduled_agent_run`; launch checks that the schedule is enabled and rechecks workspace repository access, then creates a fresh UUID thread with system-owned automation metadata.
 
-The dashboard proxies `run.start` commands to LangGraph after validating JSON, access, and thread state. A missing thread is allowed only for `run.start`, which lazily creates and stamps it as an interactive dashboard thread. It attributes the command to the authenticated GitHub user, resolves model/effort from team, profile, and request overrides, normalizes repository configuration, records participants and metadata, and replaces caller-provided raw messages with typed web input. Image input has strict type, count, size, and model-capability checks. The desktop client uses this dashboard invocation path with `source="desktop"`; downstream desktop execution permits only an allowlisted local project or a worktree under its configured worktree root.
+A schedule can create a Slack root message before creating its agent run. If that required notification cannot be posted, launch records the error and does not run without its notification context. Otherwise it binds the Slack thread, constructs a system-origin typed input, and calls `create_durable_run`. Schedule configuration includes a new invocation id, workspace/environment, repository, model choice, and optional Slack notification details.
 
-A dashboard follow-up to an active thread is persisted in the message queue, not immediately started as another dashboard run. Stop cancels every pending/running run on the thread rather than trusting cached latest-run metadata; if messages were queued, it starts a new empty-input durable run to drain them. Interactive posting is denied on admin or automation threads to non-admins, while surfaced-source threads are readable to authenticated organization members.
+Desktop execution is a graph-side capability, not a separate webhook route. A run is desktop only when `RunConfig.source == "desktop"`; its requested local project path must resolve to an allowlisted project or be inside `OPEN_SWE_LOCAL_WORKTREES_DIR`.
 
-Schedules are workspace records backed by LangGraph crons targeting the `scheduler` assistant. The scheduler graph fans a schedule tick into `launch_scheduled_agent_run`. Each scheduled agent execution gets a **fresh UUID thread**, schedule/automation metadata, and the creator's repository access is rechecked at launch. A schedule may establish a Slack root message/thread for status replies; failure to create that message prevents the run, rather than losing the intended notification context.
+## Thread identities and typed inputs
 
-## Thread identity and structured input
+Thread formulas are a persisted cross-process routing contract. Slack location, Linear issue, GitHub issue/PR, and reviewer identifiers must be reproduced exactly to locate the same state; changing a namespace or stable input string orphans live threads. GitHub branch recovery extracts an embedded UUID only, falling back to the canonical PR key when no UUID exists.
 
-Thread-id formulas are persisted routing contracts: Slack locations, Linear issues, GitHub issues/PRs, and reviewers must re-derive exactly the same identifier to find live state. Altering a namespace or its stable input string effectively orphans existing threads. `thread_id_from_branch` only extracts a UUID; if it finds none, GitHub PR comments use the canonical PR key instead.
-
-Inputs are not arbitrary prompt strings at the graph boundary. `human_input` and `system_input` enforce role/kind alignment and serialize content into XML-escaped `<input-message>` envelopes. Identity/context introductions are `<dynamic-context>` blocks hashed with SHA-256, permitting previously injected identities to be omitted on later turns; potentially untrusted channel topic and purpose fields are explicitly marked `trust="untrusted"`. Callers normally construct these rich inputs themselves, while `dispatch_agent_run` can synthesize an identity from parsed configurable state for simpler callers.
+`RunInput` is structured rather than an arbitrary prompt string. `human_input` and `system_input` enforce kind alignment and XML-escape authored text inside `<input-message>` envelopes. Person, channel, and system introductions are hashed `<dynamic-context>` envelopes so already-visible context can be omitted; Slack channel topic and purpose are explicitly marked untrusted.
 
 ## Durable dispatch and completion
 
-`dispatch_agent_run` is the single agent/reviewer dispatch contract. It refuses ambiguous calls that combine prebuilt input with raw content/identity arguments, selects the graph with `assistant_id`, and delegates to `create_durable_run`. The latter defaults to `multitask_strategy="interrupt"`, `durability="sync"`, and `stream_resumable=True`; callers such as untagged Slack follow-ups can explicitly select `enqueue`. Sync durability checkpoints each step, so an interruption or process recycle can resume from a checkpoint rather than losing the run.
+`dispatch_agent_run` rejects a prebuilt input combined with raw content or identity arguments. Otherwise it either builds the supplied typed context or synthesizes source identities from configuration, then delegates to `create_durable_run` with the requested agent or reviewer assistant.
 
-Every created run is marked for Protocol v2 streaming, includes the v2 stream modes and subgraphs, and receives a `prepare_run_id` in both configurable state and metadata. This preserves tools/lifecycle and nested-agent visibility for runs that the dashboard did not start, and lets a later client replay the stream.
+`create_durable_run` defaults to `multitask_strategy="interrupt"`, `durability="sync"`, and resumable streaming. It injects an invocation id and start time into configurable state and metadata, selects the v3 streaming compatibility marker, requests values, updates, messages, custom, tasks, and checkpoints stream modes, and enables subgraph streaming. Callers may override the multitask strategy, notably Slack's enqueued follow-ups.
 
-When both `RUN_COMPLETE_WEBHOOK_SECRET` and an absolute non-loopback `COMPLETION_WEBHOOK_URL` are configured, dispatch attaches `/webhooks/run-complete?token=…`; otherwise it deliberately omits the webhook so an invalid local URL cannot make all run creation fail. The receiving route is fail-closed on that token. On `success`, completion can schedule a deduplicated Slack session-cost refresh. On `error` or `timeout`, it loads thread metadata, settles an unfinished reviewer check where relevant, restores a code-channel session only if no later run is live, and best-effort posts a source-appropriate failure reply to Slack, Linear, or GitHub. Failure replies are idempotent per run id (with a legacy thread-level fallback when an old payload has no run id); `interrupted` is intentionally not treated as a user-visible failure because it is the normal replacement behavior for an interrupting follow-up.
+A completion webhook is attached only when `RUN_COMPLETE_WEBHOOK_SECRET` is configured and `COMPLETION_WEBHOOK_URL` is absolute and non-loopback; unsafe configuration omits the webhook rather than breaking run creation. The completion endpoint itself fails closed on its token. Successful eligible Slack runs schedule feedback and a deduplicated session-cost refresh. For `error` and `timeout`, completion best-effort settles reviewer checks and Slack/code-channel status, then posts a source-aware Slack, Linear, or GitHub failure reply once per run. `interrupted` deliberately produces no failure reply because it is normal replacement behavior.
 
 ## Safe changes and focused verification
 
-- Preserve raw-body verification before parsing and keep secrets fail-closed. Exercise Slack replay age, deduplication, external-channel refusal, and non-directed-message filters when changing admission.
-- Treat `agent/thread_ids.py` formulas and stored source context as compatibility surfaces. Test mapping conflicts rather than adding a heuristic that guesses a Slack thread.
-- Keep all new invocation paths on `dispatch_agent_run` or `create_durable_run`; test their durability, protocol-v2 marker, resumability, metadata correlation, and completion-webhook fallback in `tests/agent/test_dispatch.py`.
-- Test completion statuses, source-specific replies, per-run dedupe, cost refresh, reviewer-check cleanup, and intentional silence for interrupted/wakeup runs in `tests/webhooks/test_completion_webhook.py`.
-- For dashboard changes, test lazy thread creation, attribution/config construction, content/image validation, and thread-wide cancellation/queue draining in `tests/dashboard/test_dashboard_thread_api.py`.
+- Preserve raw-body signature verification before JSON parsing and retain fail-closed secrets. Test Slack replay/deduplication, external-channel refusal, bot filters, and edit identity checks.
+- Treat `agent/thread_ids.py` and stored source context as compatibility surfaces. Test mapping conflicts instead of adding a Slack-thread guessing heuristic.
+- Route new integration triggers through `dispatch_agent_run` or `create_durable_run`; test input exclusivity, sync durability, stream marker/modes, subgraphs, invocation correlation, and completion-webhook fallback.
+- For schedule changes, test cron validation, administrator authorization, repository access at launch, fresh-thread allocation, and Slack-root-message failure.
+- Test completion status handling, per-run idempotence, source-specific failure replies, reviewer cleanup, and intentional silence for interrupted runs.

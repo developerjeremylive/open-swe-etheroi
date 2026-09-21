@@ -1,160 +1,140 @@
 ---
 type: state-management concept
-title: Threads, Durable Runs, and State
-description: How Open SWE identifies durable LangGraph conversations, constructs follow-up inputs, owns thread metadata and Store records, and preserves sandbox continuity across product surfaces.
-tags: [threads, state, langgraph, durability, checkpoints, sandbox, slack, integrations]
+title: Threads, runs, and durable state
+description: Defines the identities and persistence boundaries that continue Open SWE work across messages, integrations, runs, checkpoints, sandboxes, and the dashboard transcript.
+tags: [threads, state, langgraph, durability, checkpoints, sandbox, transcript, postgresql]
 verified:
   - by: openwiki/0.4.2
-    at: 2026-09-08T08:15:30.533Z
+    at: 2026-09-21T08:17:01.511Z
 sources:
-  - id: openwiki-source-068d65a84c760eb8d555055e
-    resource: repo://agent/completion.py
+  - id: openwiki-source-0dc2eaa9f468f4d742bc32b4
+    resource: repo://agent/database/postgres.py
   - id: openwiki-source-c48b309c5ca416cf623f0866
     resource: repo://agent/dispatch.py
   - id: openwiki-source-ba064e884edcde6097165df2
     resource: repo://agent/github/webhook.py
-  - id: openwiki-source-cb4e403499865fd6b797127c
-    resource: repo://agent/input_messages.py
-  - id: openwiki-source-2d78b3dc0a340eaacb9e53e2
-    resource: repo://agent/linear/webhook.py
-  - id: openwiki-source-f2ef7b73c8002cd7b756ad30
-    resource: repo://agent/review/findings.py
+  - id: openwiki-source-b6e514b5a92c6b11a90aac55
+    resource: repo://agent/local_checkpointer.py
   - id: openwiki-source-24b1722c4aacbce0b06350ae
     resource: repo://agent/run_config.py
   - id: openwiki-source-6fd11c8bb15f5eb94b765440
     resource: repo://agent/sandboxes/lifecycle.py
   - id: openwiki-source-41a696e92db10ba3dc9c66b0
     resource: repo://agent/slack/client.py
-  - id: openwiki-source-92871ba83020d97558f679b2
-    resource: repo://agent/slack/code_channels.py
-  - id: openwiki-source-e747dfa76de43823582b8bab
-    resource: repo://agent/slack/tools/manage_code_channel.py
-  - id: openwiki-source-4ffd3d31ffb2d798faaaad59
-    resource: repo://agent/slack/webhook.py
-  - id: openwiki-source-db8a5812295508f44c54b439
-    resource: repo://agent/source_context.py
   - id: openwiki-source-e7e51eafe569197d9f0f4de2
     resource: repo://agent/store.py
   - id: openwiki-source-2df3763659a7f9d1944f28e7
     resource: repo://agent/thread_ids.py
+  - id: openwiki-source-a38b6fc6b5da38a0707fced6
+    resource: repo://agent/transcript/checkpoints.py
+  - id: openwiki-source-2562464aeb17759bd8e096b5
+    resource: repo://agent/transcript/engine.py
+  - id: openwiki-source-ec86c2dce9c7714bd599035e
+    resource: repo://agent/transcript/listener.py
+  - id: openwiki-source-a20ae9a05c3587e768df482f
+    resource: repo://agent/transcript/rebuild.py
+  - id: openwiki-source-b604072293f05495b6bf5e4f
+    resource: repo://agent/transcript/routes.py
   - id: openwiki-source-79be4c606a697afbf6efb749
     resource: repo://agent/utils/thread_ops.py
-  - id: openwiki-source-7c60191e42b8e30b62935af1
-    resource: repo://agent/utils/thread_participants.py
-  - id: openwiki-source-bd05fb2fcc2066f4d449df18
-    resource: repo://agent/utils/thread_settings.py
-  - id: openwiki-source-25a50e8385de61204afe1bcf
-    resource: repo://agent/webhooks/common.py
-  - id: openwiki-source-5bbba7b2a8ea8360ff233d63
-    resource: repo://langgraph.json
-generated: { by: "openwiki/0.4.2", at: "2026-09-08T08:15:30.533Z" }
+generated: { by: "openwiki/0.4.2", at: "2026-09-21T08:17:01.511Z" }
 ---
 
-# Threads, Durable Runs, and State
+# Threads, runs, and durable state
 
-A LangGraph thread is Open SWE's unit of continuity. A stable `thread_id` selects a conversation's checkpointed graph state and message history; thread metadata holds durable, queryable facts about that conversation; and the LangGraph Store holds separately namespaced application records. A run is an execution on that thread, not a replacement for it.
+A **thread** is the durable LangGraph conversation identity: its checkpointed graph state and history continue across runs. A **run** is one execution appended to that thread. This distinction is the foundation for follow-ups: an integration must resolve the established `thread_id`, create a run with new input, and leave the existing thread state intact.
 
-The boundary matters when changing an integration: a webhook, dashboard action, reviewer, or background task must route a follow-up to the right existing thread and supply a new input. It must not manufacture a random identity, overwrite another surface's source context, or replace a sandbox merely because a reconnect failed.
+State is deliberately split by owner:
 
-## Identity is a persistence contract
-
-`agent/thread_ids.py` is the single home for deterministic thread-id derivation. Its exact keys and namespaces are persisted routing contracts: separate processes re-derive IDs from external identifiers, so changing a formula makes existing threads unreachable through their normal entrypoints.
-
-| Conversation or purpose | Derivation | Stable key |
-| --- | --- | --- |
-| Slack location | `slack_thread_id` | `slack:{channel}:{timestamp}:{nonce}` |
-| PR comment on a non-Open-SWE branch | `pr_comment_thread_id` | `{owner}/{repo}/pr/{pr_number}` |
-| Reviewer for a PR | `reviewer_thread_id` | `{owner}/{repo}/pr/{pr_number}/reviewer` |
-| Repository review style | `review_style_thread_id` | `{owner}/{repo}/review-style` |
-| Linear issue | `linear_issue_thread_id` | `linear-issue:{issue_id}` |
-| GitHub issue | `github_issue_thread_id` | `github-issue:{issue_id}` |
-| Baby-sit lock | `baby_sit_lock_thread_id` | `open-swe:baby-sit-lock:{key}` |
-
-Slack, PR-comment, reviewer, review-style, and baby-sit lock IDs are URL-namespace UUIDv5 values. Linear and GitHub issue IDs use `_sha256_uuid`. The reviewer key deliberately differs from the agent PR-comment key, so a PR's autonomous reviewer and its agent conversation cannot collide.
-
-For a PR that Open SWE created, the GitHub PR-comment handler first extracts a UUID embedded in the branch with `thread_id_from_branch`; only a branch without one uses `pr_comment_thread_id`. Linear delivery uses `linear_issue_thread_id(issue_id)`, so redelivery stays on the issue's thread.
-
-```mermaid
-flowchart TD
-  Slack["Slack location"] --> SlackID["Resolve Slack thread id"]
-  Linear["Linear issue id"] --> LinearID["Derive issue thread id"]
-  PR["GitHub PR comment"] --> Branch["Extract branch UUID when present"]
-  Branch --> AgentThread["Agent thread"]
-  SlackID --> AgentThread
-  LinearID --> AgentThread
-  PR --> Reviewer["Derive reviewer thread id"]
-  AgentThread --> Run["Create durable run"]
-  Reviewer --> Run
-```
-Thread identity lets independently triggered work converge on the correct durable conversation.
-
-### Slack mappings support moves and retirement
-
-Slack has a Store-backed mapping in a per-channel namespace, keyed by the Slack thread timestamp. `resolve_slack_thread_id` checks that explicit mapping first. If absent, it searches thread metadata for matching `source_context`; it rejects multiple matches, otherwise binds the matching ID or the deterministic Slack fallback. Binding validates the Slack location, refuses a conflicting existing mapping, then reads back the write. Thus one Slack location cannot silently be assigned to two Open SWE threads.
-
-Deleting associations does not simply erase the map: it writes a fresh nonce at that location. With no mapped ID, a future resolution derives a different fallback ID, avoiding collision with the retired conversation. This is used by moves such as creating a code channel.
-
-A code channel is one session for the whole channel, keyed by `CODE_CHANNEL_SESSION_TS = "0"`, not a Slack reply thread. `manage_code_channel` binds the existing agent thread to `(channel_id, "0")` and changes its `source_context`. The sentinel selects `conversations.history` without `ts`; ordinary Slack conversations use `conversations.replies` with the thread timestamp. Slack's `processing`, `active`, `suspended`, and `closed` session statuses are Slack UI lifecycle state, distinct from LangGraph thread status.
-
-## State ownership and metadata
-
-Thread metadata is the durable cross-surface index and small per-thread state. `source_context` identifies the originating Slack location, Linear issue, GitHub issue, or PR; its Pydantic model permits unknown fields and preserves only supplied fields on output. It parses malformed historical metadata as an empty context rather than breaking a run. Upsert logic keeps the opening context rather than letting later activity repoint a thread, preserves the first title, and stores participant identities as metadata.
-
-Participant logins and emails use key-per-person maps such as `{"octocat": true}`, rather than lists. That shape permits a JSONB containment query for one participant. Reviewer threads additionally carry `kind = "reviewer"`, plus reviewer-specific metadata such as PR state, head SHA, watch flag, and findings. The kind is both a UI/query discriminator and a completion-handling boundary: normal agent Slack completion work is skipped for reviewer threads.
-
-Thread-level settings are a separate metadata snapshot under `agent_settings`. On the first run, model, effort, subagent model/effort, and repository instructions are chosen for the thread; sender identity, personal instructions, and PR preferences remain per-message. Later profile edits do not change the snapshot unless a caller explicitly stores a replacement, such as a model override. Reads cache for five minutes and reads/writes fail soft, so settings storage cannot prevent a run. Strict normalization drops invalid or obsolete settings rather than retaining arbitrary profile data.
-
-The LangGraph Store is not thread metadata. `agent/store.py` is the sanctioned wrapper for namespaced key/value access: a missing item returns `None`, whereas other HTTP failures propagate. This makes an outage observably different from an empty record. `TypedStore` validates records through a Pydantic model; `get` fails for an unreadable requested record, while listings log and skip malformed records so one old record does not take down a listing.
-
-## Follow-up input and run configuration
-
-Each run supplies new messages; the graph retains its thread state. `build_run_input` serializes the authored request into an `<input-message>` envelope with a namespaced sender, surface, kind, optional channel, and structured data. It may precede that request with person, channel, and system `<dynamic-context>` introductions. Entity IDs are validated and text is escaped; Slack channel topic and purpose are marked untrusted.
-
-Dynamic context blocks are content-hashed. `build_input_messages` excludes introductions already recorded in the injected-hash set. When summarization has moved early messages behind its cutoff, `visible_dynamic_context_hashes` treats those hidden blocks as no longer visible, allowing necessary identity context to be introduced again. This prevents deduplication state from making a summarized conversation lose information the model can no longer see.
-
-`configurable` is the per-run transport contract, not durable thread state. `RunConfig` accepts unknown keys and dumps only fields that were supplied, so independent writers can enrich it without erasing one another's keys. Parsing is deliberately tolerant: invalid fields are dropped iteratively while valid fields, including a thread ID, survive. Its values are optional because each graph and trigger needs a different subset.
-
-## Durable dispatch and checkpoints
-
-All product triggers use `dispatch_agent_run`, which delegates to `create_durable_run`; it can select the `agent` or `reviewer` graph and accepts either a prebuilt input or source identities, never both. The dispatch helper adds a unique `prepare_run_id` into both `configurable` and run metadata, merges supplied metadata, and enables the event-streaming marker.
+- **LangGraph thread state** holds graph checkpoints, status, and mergeable thread metadata.
+- **LangGraph Store** holds independently namespaced application records such as Slack mappings and pending dashboard messages.
+- **PostgreSQL transcript** is a dashboard-serving, append-only event log and derived read model; it is not the LangGraph checkpoint store.
+- A thread metadata `sandbox_id` associates the conversation with a working environment, but the live backend is a process-local proxy/cache.
 
 ```mermaid
 sequenceDiagram
   participant Trigger as Product trigger
-  participant Dispatch as dispatch_agent_run
-  participant Input as Input builder
-  participant LG as LangGraph
-  participant Thread as Existing thread
+  participant Identity as Thread identity resolver
+  participant Dispatch as Durable dispatcher
+  participant Graph as LangGraph thread
+  participant Sandbox as Sandbox lifecycle
+  participant Transcript as PostgreSQL transcript
 
-  Trigger->>Dispatch: thread id and request
-  Dispatch->>Input: build input when not prebuilt
-  Dispatch->>Dispatch: prepare config and metadata
-  Dispatch->>LG: runs.create with durable defaults
-  LG->>Thread: append input and checkpoint execution
-  LG-->>Trigger: run identity
+  Trigger->>Identity: external location or issue identity
+  Identity-->>Trigger: stable thread id
+  Trigger->>Dispatch: thread id and new request
+  Dispatch->>Graph: create run with sync durability
+  Graph->>Graph: retain checkpoints and metadata
+  Graph->>Sandbox: reuse or create bound environment
+  Graph->>Transcript: append transcript events
+  Transcript-->>Trigger: dashboard can read or stream state
 ```
-A trigger creates a run on the selected durable thread using a normalized input and configuration.
+This shows the ownership boundary: runs operate on one LangGraph thread, while sandbox association and dashboard transcript state are attached to that identity without replacing its checkpoints.
 
-The standard defaults are `multitask_strategy="interrupt"`, `durability="sync"`, `if_not_exists="create"`, resumable streaming, the Protocol v2 stream modes, and subgraph streaming. Interrupt stops an active run while preserving its sync checkpoint, then runs with history plus the follow-up; background work such as baby-sit can choose `enqueue`. Webhook triggers therefore do not need an in-process busy lock. A Store FIFO remains for deliberate dashboard injection and Slack message edits; it caps `pending_messages` at `MAX_QUEUED_MESSAGES` (100), dropping oldest entries.
+## Thread identity is a persistence contract
 
-A completion webhook is attached only if `RUN_COMPLETE_WEBHOOK_SECRET` is set and `COMPLETION_WEBHOOK_URL` is an absolute non-loopback HTTP(S) URL. Otherwise dispatch logs a warning and creates the run without the webhook, rather than allowing a platform-rejected URL to fail every run. The checkpointer has deletion TTL configured as 43,200 minutes with a 60-minute sweep interval: checkpointed state of inactive threads eventually expires.
+`agent/thread_ids.py` is the single home for deterministic derivation. Webhooks, the dashboard, and reviewer code must independently re-derive the same IDs from external identifiers; changing a key or namespace orphans existing threads from their normal routing path.
 
-## Sandbox association and recovery boundary
+| Purpose | Stable key | Derivation |
+| --- | --- | --- |
+| Slack location | `slack:{channel}:{timestamp}:{nonce}` | URL-namespace UUIDv5 |
+| Agent PR comment | `{owner}/{repo}/pr/{pr_number}` | URL-namespace UUIDv5 |
+| PR reviewer | `{owner}/{repo}/pr/{pr_number}/reviewer` | URL-namespace UUIDv5 |
+| Per-user PR review chat | `{owner}/{repo}/pr/{pr_number}/chat/{login.lower()}` | URL-namespace UUIDv5 |
+| Review style | `{owner}/{repo}/review-style` | URL-namespace UUIDv5 |
+| Baby-sit lock | `open-swe:baby-sit-lock:{key}` | URL-namespace UUIDv5 |
+| Linear issue | `linear-issue:{issue_id}` | SHA-256-derived UUID |
+| GitHub issue | `github-issue:{issue_id}` | SHA-256-derived UUID |
 
-A thread's `sandbox_id` in metadata connects durable conversation state to its working tree. `ensure_sandbox_for_thread` first uses a cached backend, otherwise reconnects using that ID, and creates a sandbox only when neither exists. It writes the ID only after creation and initialization have succeeded, then publishes the backend to the per-thread proxy cache. This ordering prevents the next run from adopting a half-built sandbox.
+The reviewer suffix intentionally makes a reviewer thread distinct from the agent PR-comment thread. For an Open SWE-created PR, GitHub comment handling first scans its branch name for the embedded thread UUID and only falls back to the PR key. Linear deliveries route with `linear_issue_thread_id(issue_id)`, so redelivery remains in the issue conversation.
 
-Do not interpret reconnect failure as permission to replace an agent sandbox. An unreachable existing sandbox raises `SandboxUnreachableError`: replacement could discard uncommitted work. A deleted sandbox (`SandboxGoneError`) is replaced because its stored ID otherwise bricks future runs. `allow_replacement` additionally permits replacement for an unreachable read-only reviewer sandbox whose checkout can be rebuilt. Explicit reset and recreate operations also bind a new ID only after the replacement has been prepared.
+### Slack location mappings and code-channel sessions
 
-The proxy is a stable, thread-keyed backend handle. It serializes lazy reconnect startup and lets a middleware-held reference observe a newly connected backend, rather than handing each layer a stale backend object.
+Slack resolution first reads the explicit Store mapping in a per-channel namespace. If absent, `resolve_slack_thread_id` searches thread `source_context` metadata for the location, rejects ambiguity, then binds either that matching thread or the deterministic Slack fallback. Binding rejects a conflicting existing mapping and verifies the persisted value. Detaching a location writes a new nonce rather than merely deleting it, so future deterministic fallback cannot collide with the retired thread.
 
-## Operational checks
+A Slack code channel is a whole-channel agent session, represented by `CODE_CHANNEL_SESSION_TS = "0"` rather than a Slack reply timestamp. Moving into one binds `(channel_id, "0")` to the existing thread and updates its source context. The sentinel selects channel history retrieval rather than replies for a normal thread. Its Slack-facing `processing`, `active`, `suspended`, and `closed` statuses are UI/session state, not LangGraph thread status.
 
-When changing these mechanisms, test the invariants rather than only a caller:
+## Metadata, Store, and configuration
 
-- Verify every new entrypoint chooses an existing deterministic ID or explicitly creates a new identity boundary.
-- Exercise Slack mapping conflict, metadata fallback, duplicate metadata match, retirement nonce, and code-channel sentinel paths.
-- Verify dispatch arguments, invalid completion-webhook degradation, interrupt versus enqueue behavior, and resumable Protocol v2 configuration.
-- Verify input envelope escaping, identity validation, dynamic-context de-duplication, and reintroduction after summarization.
-- Verify sandbox create/publish ordering and the distinction between unreachable and gone sandboxes. See [Sandbox Lifecycle](../architecture/sandbox-lifecycle.md).
+Thread metadata is a small, queryable cross-surface index. `SourceContext` records the opening Slack, Linear, GitHub, or PR context; it preserves unknown supplied fields and turns malformed historical context into an empty context rather than failing a run. Participant logins and emails are key-per-person objects, not lists, because JSONB containment can match a single object key. Reviewer threads use `kind = "reviewer"` to distinguish reviewer state and completion behavior from ordinary agent work.
 
-For surrounding flows, see [Invocation](../workflows/invocation.md), [Follow-up Messages](../workflows/follow-up-messages.md), and [Models, Profiles, and Instructions](./models-profiles-instructions.md).
+Thread-level model and repository settings are a separate `agent_settings` metadata snapshot. They are resolved on the first run, while sender identity and personal instructions remain per-message; subsequent profile changes do not alter the thread unless a caller explicitly rewrites the snapshot. Settings are strictly normalized, cached for five minutes, and load/store failures fail soft.
+
+The LangGraph Store is not metadata. `agent/store.py` is the sanctioned namespaced key/value wrapper: a missing item is `None`, while another failure propagates. `TypedStore` validates records with Pydantic; an unreadable requested record raises, but listings log and skip malformed records. The dashboard's deliberate follow-up injection uses a Store FIFO at `("queue", thread_id)`: `queue_id` makes repeated injections idempotent and the queue retains only the newest 100 messages.
+
+`configurable` is per-run transport rather than durable thread state. `RunConfig` preserves unknown keys, drops only invalid fields during tolerant parsing, and emits only supplied values. Dispatch establishes one invocation identity in both configurable data and metadata, along with an invocation start time, so downstream work and completion telemetry can correlate the execution.
+
+## Inputs, runs, and checkpoint continuation
+
+Each run contributes a normalized request while the thread retains history. `build_run_input` serializes authored content into escaped `<input-message>` envelopes and can prepend validated person, channel, and system `<dynamic-context>` introductions. Dynamic contexts are content-hashed and not reinjected when already visible; after summarization hides an earlier block, it becomes eligible for introduction again.
+
+`dispatch_agent_run` is the common trigger entrypoint for agent and reviewer work. It rejects a prebuilt input combined with source content or identities, builds an input when needed, and delegates to `create_durable_run`. Defaults are `multitask_strategy="interrupt"`, `durability="sync"`, `if_not_exists="create"`, resumable streams, and the v3 streaming modes and subgraphs. Interrupt preserves the sync checkpoint of active work before processing the follow-up; background work may opt into `enqueue`.
+
+`prepare_run_config` adds the v3 compatibility marker and invocation metadata. `stream_resumable=True` retains events so the dashboard can attach to a run started by another surface and replay enough state to show it as running. A completion webhook is attached only when a secret exists and its URL is absolute HTTP(S) and non-loopback; invalid deployment configuration degrades to no webhook instead of failing every run creation.
+
+The deployment checkpointer deletes dormant checkpoint state using a 43,200-minute default TTL with an hourly sweep. Desktop development differs: `agent/local_checkpointer.py` installs an SQLite saver through `langgraph.desktop.json`, commits checkpoints as written, and imports old pickled in-memory checkpoints once. The import completion marker is created only after a successful copy, so an interrupted migration retries safely on the next start.
+
+## Sandbox continuity and recovery
+
+A thread metadata `sandbox_id` points to the working environment. `ensure_sandbox_for_thread` uses a cached connection when available, otherwise reconnects by that ID; it creates an environment only if none is bound. A deleted sandbox is replaced, but an unreachable existing agent sandbox raises `SandboxUnreachableError` rather than silently discarding potential uncommitted work. `allow_replacement` extends replacement to unreachable sandboxes for re-derivable read-only reviewer checkouts.
+
+Creation ordering is an invariant: the lifecycle creates and initializes the sandbox, writes `sandbox_id` metadata only after success, then publishes the backend through the thread-keyed proxy. A failed earlier attempt leaves no half-built ID for a later run to adopt, and no partially initialized backend becomes visible.
+
+## PostgreSQL transcript: dashboard state, not graph state
+
+When PostgreSQL is configured, the transcript subsystem provides a durable dashboard read model independent of LangGraph reads. Its engine is the only writer: it takes a per-thread advisory lock, assigns gapless versions, makes `command_id` receipts idempotent, writes events/projections/blobs and the new head in one transaction, then notifies subscribers. The log is authoritative; projections can be deleted and rebuilt in version order under the same lock, while attachment and full tool-output blobs remain alongside the log.
+
+Transcript reads use projected data and a PostgreSQL `REPEATABLE READ` snapshot. The API authorizes against its mirrored subset of thread metadata inside that same snapshot, avoiding a LangGraph request and preventing a private-state change from producing a refused-but-served read. Live SSE first subscribes, then replays events by version; it rechecks authorization while streaming and ends with `revoked` or `deleted` when appropriate. PostgreSQL `LISTEN`/`NOTIFY` distributes thread/version signals across processes; subscribers read the rows themselves, and local publication is merely a latency optimization.
+
+Turn checkpoints are transcript observability, not LangGraph checkpoints: at a turn end, the live sandbox captures its complete working tree in a scratch-index commit and records a hidden ref named by thread and turn ID. Capture failures become checkpoint status/error data and never fail the agent run.
+
+## Operations and focused tests
+
+- Treat thread-ID formulas, Slack mapping behavior, and source-context identity as long-lived routing contracts.
+- Test `queue_id` deduplication and the 100-item queue cap when changing dashboard follow-up injection.
+- Test dispatch's incompatible-input rejection, interrupt/enqueue behavior, webhook degradation, stream resumability, and invocation propagation.
+- Verify desktop checkpoint persistence/import separately from deployed TTL behavior.
+- Test transcript append idempotency, ordered replay/rebuild, authorization snapshot consistency, and reconnect behavior for PostgreSQL notifications.
+- Test sandbox create/bind/publish ordering and the distinction between gone and unreachable environments. See [Sandbox Lifecycle](../architecture/sandbox-lifecycle.md).
+
+For caller-facing flows, see [Invocation](../workflows/invocation.md), [Follow-up Messages](../workflows/follow-up-messages.md), and [Dashboard UI](../integrations/dashboard-ui.md).

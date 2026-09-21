@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:75920d28bad5b192afd797dfb84208215370aa54fa04f783dbddc72b010939e9",
+  "pageVersion": "sha256:ab9b4dc380de87fbaffd4630086de2e0258d18e7e79a86d4066e4b3c1f39e722",
   "claims": [
     {
       "id": "claim_9a77e9c5301a46b8bbd02832b9de5a90",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://pyproject.toml",
-          "version": "repo-file-v1:sha256:6a4ff3c5410f45c156688f8f18dee9c03925403a45b034352810673cc679ad98"
+          "version": "repo-file-v1:sha256:a888ca6477681c9dbcef9a141ce6a2db96305f965b78090b9e84de9f114838f0"
         }
       ]
     },
@@ -18,21 +18,21 @@
       "evidence": [
         {
           "resource": "repo://pyproject.toml",
-          "version": "repo-file-v1:sha256:6a4ff3c5410f45c156688f8f18dee9c03925403a45b034352810673cc679ad98"
+          "version": "repo-file-v1:sha256:a888ca6477681c9dbcef9a141ce6a2db96305f965b78090b9e84de9f114838f0"
         }
       ]
     },
     {
       "id": "claim_51ddbe6a89c1461d9c078e3e373030cf",
-      "statement": "Test tooling (pytest, pytest-asyncio, Ruff, ty, Pygments) is declared in the dev optional-dependency group and installed via `make install` which runs `uv sync --extra dev`.",
+      "statement": "Pytest, pytest-asyncio, Ruff, and ty are declared in the dev optional-dependency group and installed via `make install` which runs `uv sync --extra dev`; Pygments is a runtime dependency.",
       "evidence": [
         {
           "resource": "repo://Makefile",
-          "version": "repo-file-v1:sha256:1f1adc33a073a0642af282d579fc461f86853f4a522bf69d6ee4d63c35c7787d"
+          "version": "repo-file-v1:sha256:3e33a845c15445df1d2b6f4b16e4040302f7a21bd90b298e619f76ec48db72b4"
         },
         {
           "resource": "repo://pyproject.toml",
-          "version": "repo-file-v1:sha256:6a4ff3c5410f45c156688f8f18dee9c03925403a45b034352810673cc679ad98"
+          "version": "repo-file-v1:sha256:a888ca6477681c9dbcef9a141ce6a2db96305f965b78090b9e84de9f114838f0"
         }
       ]
     },
@@ -42,7 +42,7 @@
       "evidence": [
         {
           "resource": "repo://tests/conftest.py",
-          "version": "repo-file-v1:sha256:e12e2fdd4702568c7428d0f1726e3a56654431d0738e495ae733a1f4a600ca94"
+          "version": "repo-file-v1:sha256:b9b4768b24ce6abcc36b5f54e020c31267e4d0991f050a87d1b7fd0d65bbfb9e"
         }
       ]
     },
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://tests/conftest.py",
-          "version": "repo-file-v1:sha256:e12e2fdd4702568c7428d0f1726e3a56654431d0738e495ae733a1f4a600ca94"
+          "version": "repo-file-v1:sha256:b9b4768b24ce6abcc36b5f54e020c31267e4d0991f050a87d1b7fd0d65bbfb9e"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://tests/conftest.py",
-          "version": "repo-file-v1:sha256:e12e2fdd4702568c7428d0f1726e3a56654431d0738e495ae733a1f4a600ca94"
+          "version": "repo-file-v1:sha256:b9b4768b24ce6abcc36b5f54e020c31267e4d0991f050a87d1b7fd0d65bbfb9e"
         }
       ]
     },
@@ -72,11 +72,11 @@
       "evidence": [
         {
           "resource": "repo://AGENTS.md",
-          "version": "repo-file-v1:sha256:1d76197da0a0227d4bf93caeff444a5075a90a63c87f5019fbf89c50f164f83d"
+          "version": "repo-file-v1:sha256:becca55f3ecff38bee300712f0775d160204fbe387b909d6726b4585c82987b4"
         },
         {
           "resource": "repo://Makefile",
-          "version": "repo-file-v1:sha256:1f1adc33a073a0642af282d579fc461f86853f4a522bf69d6ee4d63c35c7787d"
+          "version": "repo-file-v1:sha256:3e33a845c15445df1d2b6f4b16e4040302f7a21bd90b298e619f76ec48db72b4"
         }
       ]
     },
@@ -86,7 +86,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile",
-          "version": "repo-file-v1:sha256:1f1adc33a073a0642af282d579fc461f86853f4a522bf69d6ee4d63c35c7787d"
+          "version": "repo-file-v1:sha256:3e33a845c15445df1d2b6f4b16e4040302f7a21bd90b298e619f76ec48db72b4"
         }
       ]
     },
@@ -96,11 +96,11 @@
       "evidence": [
         {
           "resource": "repo://Makefile",
-          "version": "repo-file-v1:sha256:1f1adc33a073a0642af282d579fc461f86853f4a522bf69d6ee4d63c35c7787d"
+          "version": "repo-file-v1:sha256:3e33a845c15445df1d2b6f4b16e4040302f7a21bd90b298e619f76ec48db72b4"
         },
         {
           "resource": "repo://pyproject.toml",
-          "version": "repo-file-v1:sha256:6a4ff3c5410f45c156688f8f18dee9c03925403a45b034352810673cc679ad98"
+          "version": "repo-file-v1:sha256:a888ca6477681c9dbcef9a141ce6a2db96305f965b78090b9e84de9f114838f0"
         }
       ]
     },
@@ -110,11 +110,11 @@
       "evidence": [
         {
           "resource": "repo://package.json",
-          "version": "repo-file-v1:sha256:85ff550163c48dcb3e9d2ac1a9c2558cbd366fd833a1ea789c66ea62877be443"
+          "version": "repo-file-v1:sha256:aea836bb10fcc947065b5afdb0b746dab15c7b003fd344025e99162949843d7b"
         },
         {
           "resource": "repo://tests/e2e/README.md",
-          "version": "repo-file-v1:sha256:25804f68296219bcdadd846a23ad8650eeab90d20a980a26a2cc939906fc35c0"
+          "version": "repo-file-v1:sha256:a3bb6b04b3a0c5c2192c4504edf4b07ba13d56fb91549935d3f3b7dce382cdf9"
         },
         {
           "resource": "repo://tests/e2e/package.json",
@@ -128,7 +128,7 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/README.md",
-          "version": "repo-file-v1:sha256:25804f68296219bcdadd846a23ad8650eeab90d20a980a26a2cc939906fc35c0"
+          "version": "repo-file-v1:sha256:a3bb6b04b3a0c5c2192c4504edf4b07ba13d56fb91549935d3f3b7dce382cdf9"
         },
         {
           "resource": "repo://tests/e2e/tests/full_flow.spec.ts",
@@ -142,19 +142,19 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/README.md",
-          "version": "repo-file-v1:sha256:25804f68296219bcdadd846a23ad8650eeab90d20a980a26a2cc939906fc35c0"
+          "version": "repo-file-v1:sha256:a3bb6b04b3a0c5c2192c4504edf4b07ba13d56fb91549935d3f3b7dce382cdf9"
         },
         {
           "resource": "repo://tests/e2e/fake_llm.py",
-          "version": "repo-file-v1:sha256:8a386531e01339f5eabebb20046d277fa65463800b4c86156ee627064b8a7bb5"
+          "version": "repo-file-v1:sha256:a56a120952abb834824dc82ff0b096289244f975db2bf679537379c4346621f4"
         },
         {
           "resource": "repo://tests/e2e/fakes.py",
-          "version": "repo-file-v1:sha256:c4b8854658a210e1bc99007fa635555ccec52327e36876782a9d2ea466ad1185"
+          "version": "repo-file-v1:sha256:3876f11201fa7670cf1a932119131b2d8ba2701f17d7eefdc46ec7a284a71758"
         },
         {
           "resource": "repo://tests/e2e/patches.py",
-          "version": "repo-file-v1:sha256:4435a4f3db5704112880f22751e8b6db788a4816c3ca45d10626295e6e63eb72"
+          "version": "repo-file-v1:sha256:8c8aa4076e44e48d9352476288c8f42d9f8a94d6741b5d6c77e8834a1cee4cfa"
         }
       ]
     },
@@ -164,7 +164,7 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/README.md",
-          "version": "repo-file-v1:sha256:25804f68296219bcdadd846a23ad8650eeab90d20a980a26a2cc939906fc35c0"
+          "version": "repo-file-v1:sha256:a3bb6b04b3a0c5c2192c4504edf4b07ba13d56fb91549935d3f3b7dce382cdf9"
         }
       ]
     },
@@ -174,7 +174,7 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/README.md",
-          "version": "repo-file-v1:sha256:25804f68296219bcdadd846a23ad8650eeab90d20a980a26a2cc939906fc35c0"
+          "version": "repo-file-v1:sha256:a3bb6b04b3a0c5c2192c4504edf4b07ba13d56fb91549935d3f3b7dce382cdf9"
         },
         {
           "resource": "repo://tests/e2e/playwright.config.ts",
@@ -188,19 +188,19 @@
       "evidence": [
         {
           "resource": "repo://desktop/package.json",
-          "version": "repo-file-v1:sha256:9e32829ce8dbe938b0183b27f62da576f1a6103de152a69997ff1f87027a9c38"
+          "version": "repo-file-v1:sha256:f8ab08a46527b61ec22a83609c57d9a9fcb0582807258fb4bdd55e6fd7d34c8f"
         },
         {
           "resource": "repo://package.json",
-          "version": "repo-file-v1:sha256:85ff550163c48dcb3e9d2ac1a9c2558cbd366fd833a1ea789c66ea62877be443"
+          "version": "repo-file-v1:sha256:aea836bb10fcc947065b5afdb0b746dab15c7b003fd344025e99162949843d7b"
         },
         {
           "resource": "repo://turbo.json",
-          "version": "repo-file-v1:sha256:2baddedda518d07ffac1f38d843cdb9bf2cb068b0cd2a241a571a718f8462878"
+          "version": "repo-file-v1:sha256:e601c6aeebd2b18f6e570c2736d36beaebeab6001cc3a851bba4b4d96e8bece0"
         },
         {
           "resource": "repo://ui/package.json",
-          "version": "repo-file-v1:sha256:255dd35a1c97c11cb6df943917f4253f40ebb564e1bd7158e71195b45676b082"
+          "version": "repo-file-v1:sha256:40d1c0431d28b62af98a8aeb16e5ccf53fd2f8608f5c1a08d6f714a693411ac5"
         }
       ]
     },
@@ -224,7 +224,7 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/tests/desktop.spec.ts",
-          "version": "repo-file-v1:sha256:b88e21c2a84ae15f268e2763f93ec98e4e5683e90ddc54c2e18f3106b95995e4"
+          "version": "repo-file-v1:sha256:b310165710d35433376f4fc6b2b59cc94a56f3be921f49ae1274ea782ce87b60"
         }
       ]
     },
@@ -244,7 +244,7 @@
       "evidence": [
         {
           "resource": "repo://tests/sandbox/test_sandbox_state.py",
-          "version": "repo-file-v1:sha256:704700326ac575264e748a198dc1aef627d6cfc9fbe3e51d0728548a44e1e46e"
+          "version": "repo-file-v1:sha256:bebb9cce79127aad20654b8ae1971a52986281dca305d2c03efb3ffd8bb6923f"
         }
       ]
     },
@@ -254,7 +254,7 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/tests/desktop.spec.ts",
-          "version": "repo-file-v1:sha256:b88e21c2a84ae15f268e2763f93ec98e4e5683e90ddc54c2e18f3106b95995e4"
+          "version": "repo-file-v1:sha256:b310165710d35433376f4fc6b2b59cc94a56f3be921f49ae1274ea782ce87b60"
         }
       ]
     },
@@ -264,11 +264,11 @@
       "evidence": [
         {
           "resource": "repo://tests/e2e/README.md",
-          "version": "repo-file-v1:sha256:25804f68296219bcdadd846a23ad8650eeab90d20a980a26a2cc939906fc35c0"
+          "version": "repo-file-v1:sha256:a3bb6b04b3a0c5c2192c4504edf4b07ba13d56fb91549935d3f3b7dce382cdf9"
         },
         {
           "resource": "repo://tests/e2e/harness.py",
-          "version": "repo-file-v1:sha256:32e58b95ad959129b17559790d370ed5903c54bd4fe2717df949ac1d113d2e05"
+          "version": "repo-file-v1:sha256:02f2e9f843b6a185a99337743cc77cb34406b190187f88082de51deba6a60087"
         }
       ]
     },
@@ -278,7 +278,7 @@
       "evidence": [
         {
           "resource": "repo://tests/agent/test_agent_assembly_context.py",
-          "version": "repo-file-v1:sha256:a99b1f9f5092164c751fa8d1cf746f30dd34ef569416761073f724d74d87c4df"
+          "version": "repo-file-v1:sha256:d937cc57d5917092d580dbe583e4434f931300fee37d43c324261d113de6a8f0"
         }
       ]
     },
@@ -288,7 +288,7 @@
       "evidence": [
         {
           "resource": "repo://tests/conftest.py",
-          "version": "repo-file-v1:sha256:e12e2fdd4702568c7428d0f1726e3a56654431d0738e495ae733a1f4a600ca94"
+          "version": "repo-file-v1:sha256:b9b4768b24ce6abcc36b5f54e020c31267e4d0991f050a87d1b7fd0d65bbfb9e"
         }
       ]
     },
@@ -308,13 +308,53 @@
       "evidence": [
         {
           "resource": "repo://tests/webhooks/test_completion_webhook.py",
-          "version": "repo-file-v1:sha256:70779e22596916b0bfbd9b3415925b57bb2060c9825030ad46e3bb46d5c5bee4"
+          "version": "repo-file-v1:sha256:1607b36bf9e6d11e6cf76e1ea9ac331bedd36d94db616272a1f163052ec1a1e8"
+        }
+      ]
+    },
+    {
+      "id": "claim_cc7f1d413c004aac8b9e34be9a914399",
+      "statement": "Repository guidance requires focused local validation rather than the full test suite, and says tests should protect observable behavior and meaningful deterministic edge cases rather than constants, source structure, or internal call order.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L42-L46",
+          "version": "repo-lines-v1:sha256:2c24920be5900fd083cfe8339c54db49396a77f45a3bc240bc991a896264145e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTVlODZmNjg3ZWExZWEwNGJhOTZjYzg3OWYyZmY5MjkyODA0NTg1ZWZhNTg2ZTc2MDc4NjA3ODg1ZWM5MzAyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDg3NWNhNTdkOTUzYTQ5ZWM5NzYxYWRjZjVlODIyZjlmNWM1OWRmMmQ1MWI4ZTQ0YjZiOGEwZjlkYTk0YmM3ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTRkNjEzZWJmYWY3NDU4MWY2ZDczY2IyZjMxMWY2MDc4NmNmZTYxMThkNmQyODQxMDA2NGZkYWQyYWIzNTYzNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDEwZmIyYWU3YzExNTY4MTVhMGY0N2Q5OTBhMWMzMmUyNTgwNDk0ZWQyYTUwMjA1M2Y3MWUwMmExODBiZTA0NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a235f15c2b2d44ce9b42ae521b336fe6",
+      "statement": "Autouse pytest isolation clears global sandbox backend and connection registries before and after each test, preventing a leaked sandbox handle from answering a later test's thread.",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L225-L233",
+          "version": "repo-lines-v1:sha256:41573a94f2bbfa169cd0df4270f6b0d533d16225cf7dce723c0abe0a8d753072:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmYwODY2ZjQwMTFlNTg1ZmZjMDkwOTJlZGYwODMyZTE3YjUyZjRjOTBjNGNhMGI0MmRjZmEwNTBmYTM3NWI1YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTYyNDMxYzI0NzNhZGRiMTkzNjg2ZjdhYzM0MmQzNzk0Mjc0ZGY1MmE0MDMzYTBiYWUwNzkxMzU4ZTUxYzJmOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzg1NmUxYTFjYTZmNDRlNmIwNDdlNDU5NmI1MDk5ZGQ1ZDdlYzNjN2IyOTBiNjA1YjNjYjY5YzMzOTgwMWI2YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWVmMTFjOWI3MTY3YzBhZGM0MmZlYTg1NGFiNjM0OTk3NzA4MTRiMGU3MTgxMDNhOWVjMGY5YmU3YWY2OTk3OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_079bca38f4604e02976a72c93996c236",
+      "statement": "The Makefile provides a guarded `make integration_tests` target for `tests/integration_tests/`, but that directory is absent in this checkout.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile#L85-L90",
+          "version": "repo-lines-v1:sha256:a4aafe7a72fd4f4f5d26bdacd4a2aefa14aaf82e58c6312c9c346983098b39bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNjNjM2NWZmMjVmODIwNTQ1NWQzZjk3M2JiMWU5NDM0MjZmYmI5ZDI2ODNhOGYxZjc5ZTY1NDQ3MDVmYzc4MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmVjYjM4MWFiNzkyZDgyM2YwMTNmODJjNzA2N2ZjZjA2MTQ1NmNjYjY4NTZlMmZhM2QzNmQ0MDY4NmJmOGViNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2UxZTkxOWEyNzYyZGU5NTU5Y2Y4Y2RhZjNkNWJmNTFjYjUyYzcwYjAxYmI4MjI0Njc2NzVkOGEzMzkzODhkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTcwNTRkYmQxMDhjMWMyZmRmNmJkNWE4N2M1MjQyODYzMjcyYjg3ZDlmZDhlZTU3MzRkZmYxZjdmOGVkMGI5OCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b616c3ba2cb64aa4a6ae598f3212de76",
+      "statement": "Dashboard CSRF tests protect mutation origin policy: configured dashboard and allowed origins, the backend origin, and the desktop origin are accepted, while missing, null, malformed, and hostile origins are rejected.",
+      "evidence": [
+        {
+          "resource": "repo://tests/dashboard/test_dashboard_csrf.py#L43-L149",
+          "version": "repo-lines-v1:sha256:d02bd75245f2b057cdd90ee338b99b627ee5f1742dbad69a6ebee055357d0e6d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiZDk5NDJkZWI3ZGJhYmMxMTRiMWM0OGQwMmRhNDYzODZlOWFjYTUxNWE1MmZiN2IzYzQxMmRjNjI3OTIxYjA4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlYzg4MDRlODgzMDFjODZiZDJlMTFlYTA5YzM2NjNmYmY0ZDJmODdmODZjY2RjZDg3M2VmYmYzZjZhOWMwYjU5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMDc5OWI4ODBkMmYwZTI4Y2FjNGY5NmU4OTRiMTFmMDRmNjgxZjY3ZGI5NWQ1MDBiZDc0NWNiZDQwZjM3NDg3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1YWI3YjI3MmFiNGUyNTE3NWI1ZmQyNGMxM2NmZTU2MzQyNTE0YzAyNzk0NmYwM2I1MzA1ZGYyMDMzNzg3OWY5In0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.2",
-    "at": "2026-09-08T08:15:30.533Z"
+    "at": "2026-09-21T08:17:01.511Z"
   }
 }
